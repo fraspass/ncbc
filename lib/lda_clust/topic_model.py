@@ -122,11 +122,11 @@ class topic_model:
                 for j in self.w[d]:
                     self.z[j,d] = np.zeros(len(self.w[d][j]), dtype=int)
             if self.command_level_topics:
-                self.M_star = np.zeros(shape=self.H + 1, dtype=int)
-                self.Z = np.zeros(shape=self.H + 1, dtype=int)
+                self.M_star = np.zeros(shape=self.H, dtype=int)
+                self.Z = np.zeros(shape=self.H, dtype=int)
             else:
-                self.M_star = np.zeros(shape=self.K + 1, dtype=int)
-                self.Z = np.zeros(shape=self.K + 1, dtype=int)
+                self.M_star = np.zeros(shape=self.K, dtype=int)
+                self.Z = np.zeros(shape=self.K, dtype=int)
 
    ## Resample session-level topics
     def resample_session_topics(self, size=1, indices=None):
@@ -157,9 +157,9 @@ class topic_model:
                     else:
                         Wd += Counter(self.w[d][j])
                 for v in Wd:
-                    self.W[td_old,v] -= Wd[v]
+                    self.W[td_old + (1 if self.secondary_topic else 0),v] -= Wd[v]
             # Calculate allocation probabilities
-            probs = np.log(self.gamma + self.T) * np.ones(self.K)
+            probs = np.log(self.gamma + self.T)
             if self.command_level_topics:
                 if self.secondary_topic:
                     for h in Sd:
@@ -194,16 +194,65 @@ class topic_model:
                     self.S[td_new,h] += Sd[h]
             else:
                 for v in Wd:
-                    self.W[td_new,v] += Wd[v]
+                    self.W[td_new + (1 if self.secondary_topic else 0),v] += Wd[v]
                 if self.secondary_topic:
                     self.M_star[td_new] += np.sum(self.M[d])
                     self.Z[td_new] += Zd
-            
+
+   ## Resample session-level topics
+    def resample_command_topics(self, size=1, indices=None):
+        if not self.command_level_topics:
+            raise TypeError('Command-level topics cannot be resampled if command_level_topics is not used.')
+        if indices is None:
+            indices_d = np.random.choice(self.D, size=size)
+            indices_j = []
+            for d in indices_d:
+                indices_j += [int(np.random.choice(self.N[d]))]
+            indices = np.vstack((indices_j,indices_d)).T
+        for j, d in indices:
+            td = self.t[d]
+            s_old = int(self.s[d][j])
+            self.S[td,s_old] -= 1
+            if self.secondary_topic:
+                self.M_star[s_old] -= self.M[d][j]
+                Zdj = self.z[d][j]
+                Wd = Counter(self.w[d][j][Zdj == 1])
+                Zdj = int(np.sum(Zdj))
+                self.Z[s_old] -= Zdj
+            else:
+                Wd = Counter(self.w[d][j])
+            for v in Wd:
+                self.W[s_old + (1 if self.secondary_topic else 0),v] -= Wd[v]
+            # Calculate allocation probabilities
+            probs = np.log(self.eta + self.S[td])
+            if self.secondary_topic:
+                ## w | s,z components
+                for v in Wd:
+                    probs += np.sum(np.log(np.add.outer(self.tau + self.W[1:,v], np.arange(Wd[v]))), axis=1)
+                probs -= np.sum(np.log(np.add.outer(np.sum(self.tau + self.W[1:], axis=1), np.arange(np.sum(Wd.values())))), axis=1)
+                ## z | s components
+                probs += np.sum(np.log(self.alpha + self.Z, np.arange(Zdj)), axis=1)
+                probs += np.sum(np.log(self.alpha0 + self.M_star - self.Z, np.arange(self.M[d][j] - Zdj)), axis=1)
+                probs -= np.sum(np.log(self.alpha0 + self.alpha + self.M_star, np.arange(self.M[d][j])), axis=1)
+            else:
+                for v in Wd:
+                    probs += np.sum(np.log(np.add.outer(self.tau + self.W[:,v], np.arange(Wd[v]))), axis=1)
+                probs -= np.sum(np.log(np.add.outer(np.sum(self.tau + self.W, axis=1), np.arange(np.sum(Wd.values())))), axis=1)
+        # Transform the probabilities
+        probs = np.exp(probs - logsumexp(probs))
+        # Resample command-level topic
+        s_new = np.random.choice(self.H, p=probs)
+        self.S[td,s_new] += 1
+        for v in Wd:
+            self.W[s_new + (1 if self.secondary_topic else 0),v] -= Wd[v]
+        if self.secondary_topic:
+            self.M_star[s_new] += self.M[d][j]
+            self.Z[s_new] += Zdj
+                        
     ## Resample indicator for primary-secondary topic
-    def resample_allocations(self, size=1, indices=None):
+    def resample_indicators(self, size=1, indices=None):
         if not self.secondary_topic:
             raise TypeError('Indicators cannot be resampled if secondary topic are not used.')
-        ## Input: subset - list of tuples (i,d)
         if indices is None:
             indices_d = np.random.choice(self.D, size=size)
             indices_j = []; indices_i = []
@@ -221,14 +270,14 @@ class topic_model:
             else:
                 topic = self.t[d]
             self.Z[topic] -= z_old
-            self.W[topic*z_old,v] -= 1
+            self.W[(topic+1)*z_old,v] -= 1
             # Calculate allocation probabilities
             probs = np.zeros(2)
-            probs[0] = np.log(self.alpha + self.Z[topic]) + np.log(self.tau + self.W[topic,v]) - np.log(np.sum(self.tau + self.W[topic]))
-            probs[1] = np.log(self.alpha0 + self.M_star[topic] - 1 - self.Z[t]) + np.log(self.tau + self.W[0,v]) - np.log(np.sum(self.tau + self.W[0]))
+            probs[0] = np.log(self.alpha + self.Z[topic]) + np.log(self.tau + self.W[topic+1,v]) - np.log(np.sum(self.tau + self.W[topic+1]))
+            probs[1] = np.log(self.alpha0 + self.M_star[topic] - 1 - self.Z[topic]) + np.log(self.tau + self.W[0,v]) - np.log(np.sum(self.tau + self.W[0]))
             probs = np.exp(probs - logsumexp(probs))
             # Resample z
             z_new = np.random.choice(range(2), p=probs)
             # Update counts
             self.Z[topic] += z_new
-            self.W[topic*z_new,v] += 1
+            self.W[(topic+1)*z_new,v] += 1
