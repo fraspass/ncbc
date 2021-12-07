@@ -128,6 +128,79 @@ class topic_model:
                 self.M_star = np.zeros(shape=self.K, dtype=int)
                 self.Z = np.zeros(shape=self.K, dtype=int)
 
+    ## Initialise counts given initial values of t, s and z
+    def init_counts(self):
+        # Initialise quantities 
+        Q = Counter(self.t)
+        for topic in Q:
+            self.T[topic] += Q[topic]
+        for doc in self.w:
+            td = self.t[doc]
+            if self.command_level_topics:
+                for j in self.w[doc]:
+                    sjd = self.s[doc][j]
+                    self.S[td,sjd] += 1
+                    if self.secondary_topic:
+                        self.M_star[sjd] += self.M[doc][j] 
+                        self.Z[sjd] += np.sum(self.z[doc][j])
+                        # Primary topics
+                        Wjd = Counter(self.w[doc][j][self.z[doc][j] == 1])
+                        for v in Wjd:
+                            self.W[sjd + 1, v] += Wjd[v]
+                        # Secondary topics
+                        Wjd = Counter(self.w[doc][j][self.z[doc][j] == 0])
+                        for v in Wjd:
+                            self.W[0, v] += Wjd[v]
+                    else:
+                        Wjd = Counter(self.w[doc][j])
+                        for v in Wjd:
+                            self.W[sjd, v] += Wjd[v]
+            else:
+                for j in self.w[doc]:
+                    if self.secondary_topic:
+                        self.M_star[td] += self.M[doc][j] 
+                        self.Z[td] += np.sum(self.z[doc][j])
+                        # Primary topics
+                        Wjd = Counter(self.w[doc][j][self.z[doc][j] == 1])
+                        for v in Wjd:
+                            self.W[td + 1, v] += Wjd[v]
+                        # Secondary topics
+                        Wjd = Counter(self.w[doc][j][self.z[doc][j] == 0])
+                        for v in Wjd:
+                            self.W[0, v] += Wjd[v]
+                    else:
+                        Wjd = Counter(self.w[doc][j])
+                        for v in Wjd:
+                            self.W[td, v] += Wjd[v]
+    
+    ## Initializes chain at given values of t, s and z
+    def custom_init(self, t, s=None, z=None):
+        if isinstance(t, list) or isinstance(t, np.ndarray):
+            if len(t) != self.K:
+                raise TypeError('The initial value for t should be a K-dimensional list or np.ndarray.')
+            if isinstance(t, list):
+                self.t = np.array(t)
+            else:
+                self.t = t
+        else:
+            raise TypeError('The initial value for t should be a K-dimensional list or np.ndarray.')
+        if s is not None:
+            if not self.command_level_topics:
+                raise TypeError('Command-level topics cannot be initialised if command_level_topics is not used.')
+            elif not isinstance(s, dict):
+                raise TypeError('The initial value for s should be a dictionary.')
+            else:
+                self.s = s
+        if z is not None: 
+            if not self.secondary_topic:
+                raise TypeError('Secondary topics cannot be initialised if secondary_topic is not used.')
+            elif not isinstance(s, dict):
+                raise TypeError('The initial value for z should be a dictionary.')
+            else:
+                self.z = z
+        ## Initialise counts
+        self.init_counts()
+
    ## Resample session-level topics
     def resample_session_topics(self, size=1, indices=None):
         ## Optional input: subset - list of integers d
