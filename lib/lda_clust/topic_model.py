@@ -211,12 +211,12 @@ class topic_model:
                     self.s[d][j] = np.random.choice(self.H)
             if self.secondary_topic:
                 for j in self.w[d]:
-                    for i in range(self.M[d][j])
+                    for i in range(self.M[d][j]):
                         self.z[d][j][i] = np.random.choice(2)
         ## Initialise counts
         self.init_counts()
     
-    ## Initializes chain utilizing gensim   
+    ## Initializes chain using gensim   
     def gensim_init(self, chunksize = 2000, passes = 100, iterations = 1000, eval_every= None):
         from gensim.models import LdaModel
         # Convert words into strings (gensim requirement)
@@ -307,8 +307,62 @@ class topic_model:
                 for s in self.s[d]:
                     topic_allocation.append(np.argmax(topic_term[:,s]))
                 self.t[d] = Counter(topic_allocation).most_common(1)[0][0]
-        ## Initialise counts
+        # Initialise counts
         self.init_counts()
+
+    ## Initializes chain using spectral clustering  
+    def spectral_init(self):
+        if self.secondary_topic:
+            raise TypeError('Spectral clustering is only implemented for initialisation when secondary topics are not used.')
+        # Sparse matrix library
+        from scipy.sparse import coo_matrix
+        # Build co-occurrence matrix
+        cooccurrence_matrix = {}
+        for d in self.w:
+            if self.command_level_topics:
+                index = (self.N_cumsum[d-1] if self. d > 0 else 0)
+                for j in self.w[d]:
+                    cooccurrence_matrix[index+j] = Counter(self.w[d][j])
+            else:
+                cooccurrence_matrix[d] = Counter()
+                for j in self.w[d]:
+                    cooccurrence_matrix[d] += Counter(self.w[d][j])
+        # Obtain matrix
+        vals = []; rows = []; cols = []
+        for key in cooccurrence_matrix:
+            vals += [list(cooccurrence_matrix[key].values())]
+            rows += [key] * len(cooccurrence_matrix[key])
+            cols += [list(cooccurrence_matrix[key].keys())]
+        # Co-occurrence matrix
+        cooccurrence_matrix = coo_matrix((vals, (rows, cols)), shape=(self.N_cumsum[-1] if self.command_level_topics else self.D, self.V))
+		## Spectral decomposition of A
+        from scipy.sparse.linalg import svds
+        U, S, _ = svds(cooccurrence_matrix, k=self.H if self.command_level_topics else self.K)
+        from sklearn.cluster import KMeans
+        kmod = KMeans(n_clusters=self.H if self.command_level_topics else self.K, random_state=0).fit(U[:,::-1] * (S[::-1] ** .5))
+        if not self.command_level_topics:
+            self.t = kmod.labels_
+        else:
+            cooccurrence_matrix = {}
+            self.s[0] = kmod.labels_[:self.N_cumsum[0]]
+            cooccurrence_matrix[0] = Counter(self.s[0])
+            for d in range(1,self.D):
+                self.s[d] = kmod.labels_[self.N_cumsum[d-1]:self.N_cumsum[d]]
+                cooccurrence_matrix[d] = Counter(self.s[d])
+            # Obtain matrix
+            vals = []; rows = []; cols = []
+            for key in cooccurrence_matrix:
+                vals += [list(cooccurrence_matrix[key].values())]
+                rows += [key] * len(cooccurrence_matrix[key])
+                cols += [list(cooccurrence_matrix[key].keys())]
+            # Co-occurrence matrix
+            cooccurrence_matrix = coo_matrix((vals, (rows, cols)), shape=(self.D, self.H))
+            ## Spectral decomposition
+            U, S, _ = svds(cooccurrence_matrix, k=self.K)
+            kmod = KMeans(n_clusters=self.K, random_state=0).fit(U[:,::-1] * (S[::-1] ** .5))
+            self.t = kmod.labels_
+        # Initialise counts
+        self.init_counts()     
 
    ## Resample session-level topics
     def resample_session_topics(self, size=1, indices=None):
