@@ -201,6 +201,115 @@ class topic_model:
         ## Initialise counts
         self.init_counts()
 
+    ## Initializes uniformly at random
+    def random_init(self):
+        ## Random initialisation
+        for d in range(self.D):
+            self.t[d] = np.random.choice(self.K)
+            if self.command_level_topics:
+                for j in self.w[d]:
+                    self.s[d][j] = np.random.choice(self.H)
+            if self.secondary_topic:
+                for j in self.w[d]:
+                    for i in range(self.M[d][j])
+                        self.z[d][j][i] = np.random.choice(2)
+        ## Initialise counts
+        self.init_counts()
+    
+    ## Initializes chain utilizing gensim   
+    def gensim_init(self, chunksize = 2000, passes = 100, iterations = 1000, eval_every= None):
+        from gensim.models import LdaModel
+        # Convert words into strings (gensim requirement)
+        docs = []
+        for d in self.w:
+            if not self.command_level_topics:
+                docs.append([])
+            for j in self.w[d]:
+                if self.command_level_topics:
+                    docs.append([])
+                for v in self.w[d][j]:
+                    docs[-1].append(str(v))
+        # Create dictionary
+        from gensim.corpora import Dictionary
+        dictionary = Dictionary(docs)
+        # Create corpus
+        corpus = [dictionary.doc2bow(doc) for doc in docs]
+        # Set number of topics
+        num_topics = (self.K if not self.command_level_topics else self.H) + (1 if self.secondary_topic else 0)
+        # Model setup
+        model = LdaModel(corpus = corpus, id2word=dictionary.id2token, chunksize=chunksize, alpha='auto', eta='auto',
+                    iterations=iterations, num_topics=num_topics, passes=passes, eval_every=eval_every)
+        # Obtain topics from LDA
+        topic_allocation = {}
+        self.t = np.zeros(self.D)
+        if self.command_level_topics:
+            self.s = {}
+        if self.secondary_topic:
+            all_counter = Counter()
+        topic_term = model.get_topics()
+        for d in self.w:
+            if not self.command_level_topics:
+                topic_allocation[d] = []
+            else:
+                self.s[d] = np.zeros(self.N[d])
+            for j in self.w[d]:
+                if self.command_level_topics:
+                    topic_allocation[d,j] = []
+                for v in self.w[d][j]:
+                    if self.command_level_topics:
+                        topic_allocation[d,j].append(np.argmax(topic_term[:,v]))
+                    else:
+                        topic_allocation[d].append(np.argmax(topic_term[:,v]))
+                if self.command_level_topics:
+                    if self.secondary_topic:
+                        all_counter += Counter(topic_allocation[d,j])
+                    else:
+                        self.s[d][j] = Counter(topic_allocation[d,j]).most_common(1)[0][0]
+            if not self.command_level_topics:
+                if self.secondary_topic:
+                    all_counter += Counter(topic_allocation[d])
+                else:
+                    self.t[d] = Counter(topic_allocation[d]).most_common(1)[0][0]
+        # If secondary topics are used, find the most common topic
+        if self.secondary_topic:
+            self.z = {}
+            secondary_t = all_counter.most_common(1)[0][0]
+            for d in self.w:
+                self.z[d] = {}
+                if not self.command_level_topics:
+                    primary_t = Counter(topic_allocation[d][topic_allocation[d] != secondary_t]).most_common(1)[0][0]
+                    self.t[d] = primary_t - (1 if primary_t > secondary_t else 0)
+                for j in self.w[d]:
+                    self.z[d][j] = []
+                    if self.command_level_topics:
+                        primary_t = Counter(topic_allocation[d,j][topic_allocation[d,j] != secondary_t]).most_common(1)[0][0]
+                        self.s[d][j] = primary_t - (1 if primary_t > secondary_t else 0)
+                    for v in self.w[d][j]:
+                        self.z[d][j] += [np.argmax([topic_term[secondary_t,v], topic_term[primary_t,v]])]
+        # If command-level topics are used, repeat gensim
+        if self.command_level_topics:
+            # Convert words (command-level topics) into strings (gensim requirement)
+            docs = []
+            for d in self.w:
+                docs.append([])
+                for s in self.w[d][j]:
+                    docs[-1].append(str(s))
+            # Dictionary and corpus
+            dictionary = Dictionary(docs)
+            corpus = [dictionary.doc2bow(doc) for doc in docs]
+            # Model setup
+            model = LdaModel(corpus = corpus, id2word=dictionary.id2token, chunksize=chunksize, alpha='auto', eta='auto',
+                    iterations=iterations, num_topics=self.K, passes=passes, eval_every=eval_every)
+            topic_term = model.get_topics()
+            # Estimate topics
+            for d in self.w:
+                topic_allocation = []
+                for s in self.s[d]:
+                    topic_allocation.append(np.argmax(topic_term[:,s]))
+                self.t[d] = Counter(topic_allocation).most_common(1)[0][0]
+        ## Initialise counts
+        self.init_counts()
+
    ## Resample session-level topics
     def resample_session_topics(self, size=1, indices=None):
         ## Optional input: subset - list of integers d
