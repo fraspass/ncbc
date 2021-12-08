@@ -83,10 +83,10 @@ def simulate_data(D, K=0, fixed_K = True, H=0, fixed_H = True, V=0, fixed_V = Tr
         else:
             raise TypeError('The prior parameter tau must be a float or integer.')
     # Sample the number of commands and words for each session
-    N = np.random.poisson(lam=csi, size=D)
+    N = np.random.poisson(lam=csi, size=D) + 1
     M = {}
     for d in range(D):
-        M[d] = np.random.poisson(lam=omega, size=N[d])
+        M[d] = np.random.poisson(lam=omega, size=N[d]) + 1
     # Sample the session-level allocations
     if fixed_K:
         lam = np.random.dirichlet(alpha=np.ones(K)*gamma)
@@ -99,7 +99,6 @@ def simulate_data(D, K=0, fixed_K = True, H=0, fixed_H = True, V=0, fixed_V = Tr
         lam[-1] = 1 - np.sum(lam[:-1])
     # Sample t
     t = np.random.choice(K if fixed_K else stick_truncation, size=D, p=lam)
-    print(t)
     # Sample phi
     phi = {}
     for k in range((K if fixed_K else stick_truncation) + (1 if secondary_topic else 0)):
