@@ -7,9 +7,9 @@ def normalise(x):
 
 ## Simulate data from the topic model
 def simulate_data(D, K=0, fixed_K = True, H=0, fixed_H = True, V=0, fixed_V = True, 
-                    secondary_topic = True, command_level_topics = True, 
+                    secondary_topic = False, command_level_topics = False, 
                     gamma=1.0, eta=1.0, alpha=1.0, alpha0=1.0, tau=1.0,
-                    csi=1.0, omega=1.0, stick_truncation=100, seed=111):
+                    csi=1, omega=10, stick_truncation=100, seed=111):
     # Check if the provided value of seed is appropriate
     if (not isinstance(seed, int) or seed < 1):
         raise ValueError('seed must be an integer value larger or equal to 1.') 
@@ -37,7 +37,7 @@ def simulate_data(D, K=0, fixed_K = True, H=0, fixed_H = True, V=0, fixed_V = Tr
         raise TypeError('fixed_V must be True or False.')
     else:
         if not isinstance(V, int) or V < 2:
-            raise ValueError('K must be an integer value larger or equal to 2.')
+            raise ValueError('V must be an integer value larger or equal to 2.')
     # Prior parameters
     if isinstance(csi, float) or isinstance(csi, int):
         if not csi > 0:
@@ -99,6 +99,7 @@ def simulate_data(D, K=0, fixed_K = True, H=0, fixed_H = True, V=0, fixed_V = Tr
         lam[-1] = 1 - np.sum(lam[:-1])
     # Sample t
     t = np.random.choice(K if fixed_K else stick_truncation, size=D, p=lam)
+    print(t)
     # Sample phi
     phi = {}
     for k in range((K if fixed_K else stick_truncation) + (1 if secondary_topic else 0)):
@@ -109,9 +110,9 @@ def simulate_data(D, K=0, fixed_K = True, H=0, fixed_H = True, V=0, fixed_V = Tr
             phi[k][1:-1] = b[1:-1] * np.cumprod(1-b)[:-2]
             phi[k][-1] = 1 - np.sum(phi[k][:-1])
         elif command_level_topics and fixed_H:
-            phi[k] = np.random.dirichlet(lam=np.ones(H)*eta)
+            phi[k] = np.random.dirichlet(alpha=np.ones(H)*eta)
         elif not command_level_topics and fixed_V:
-            phi[k] = np.random.dirichlet(lam=np.ones(V)*eta)
+            phi[k] = np.random.dirichlet(alpha=np.ones(V)*eta)
     # Sample quantities for command level topics
     if command_level_topics:
         # Sample s
@@ -128,7 +129,7 @@ def simulate_data(D, K=0, fixed_K = True, H=0, fixed_H = True, V=0, fixed_V = Tr
                 psi[h][1:-1] = b[1:-1] * np.cumprod(1-b)[:-2]
                 psi[h][-1] = 1 - np.sum(psi[h][:-1])
             else:
-                psi[h] = np.random.dirichlet(lam=np.ones(V)*tau)
+                psi[h] = np.random.dirichlet(alpha=np.ones(V)*tau)
     # Sample theta for secondary topics
     if secondary_topic:
         if not command_level_topics:
@@ -143,7 +144,7 @@ def simulate_data(D, K=0, fixed_K = True, H=0, fixed_H = True, V=0, fixed_V = Tr
         w[d] = {}
         if secondary_topic:
             z[d] = {}
-        for j in N[d]:
+        for j in range(N[d]):
             if not command_level_topics:
                 if not secondary_topic:
                     w[d][j] = np.random.choice(V if fixed_V else stick_truncation, size=M[d][j], p=phi[t[d]])

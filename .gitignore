@@ -1,3 +1,5 @@
 /data/*
 .DS_Store
 */.DS_Store
+lib/lda_clust/__pycache__/*
+*/*/__pycache__

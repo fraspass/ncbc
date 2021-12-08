@@ -9,7 +9,6 @@ setup(
 	install_requires=[
 		'numpy',
 		'scipy',
-		"collections",
 		'gensim',
 		'sklearn'
 	],
