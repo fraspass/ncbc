@@ -4,6 +4,7 @@ from collections import Counter
 from scipy.special import logsumexp, loggamma
 
 class topic_model:
+    
     # The class can be used to fit one of the topic models discussed in:
     # _authornames_
     # "Topic modelling of command lines for attack pattern detection in cyber-security"
