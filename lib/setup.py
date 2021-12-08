@@ -10,6 +10,6 @@ setup(
 		'numpy',
 		'scipy',
 		'gensim',
-		'sklearn'
+		'sklearn',
 	],
 )

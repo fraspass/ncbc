@@ -2,6 +2,11 @@
 import numpy as np
 from collections import Counter
 from scipy.special import logsumexp, loggamma
+from gensim.models import LdaModel
+from gensim.corpora import Dictionary
+from scipy.sparse import coo_matrix
+from scipy.sparse.linalg import svds
+from sklearn.cluster import KMeans
 
 class topic_model:
     
@@ -219,7 +224,6 @@ class topic_model:
     
     ## Initializes chain using gensim   
     def gensim_init(self, chunksize = 2000, passes = 100, iterations = 1000, eval_every= None):
-        from gensim.models import LdaModel
         # Convert words into strings (gensim requirement)
         docs = []
         for d in self.w:
@@ -231,7 +235,6 @@ class topic_model:
                 for v in self.w[d][j]:
                     docs[-1].append(str(v))
         # Create dictionary
-        from gensim.corpora import Dictionary
         dictionary = Dictionary(docs)
         # Create corpus
         corpus = [dictionary.doc2bow(doc) for doc in docs]
@@ -315,8 +318,6 @@ class topic_model:
     def spectral_init(self):
         if self.secondary_topic:
             raise TypeError('Spectral clustering is only implemented for initialisation when secondary topics are not used.')
-        # Sparse matrix library
-        from scipy.sparse import coo_matrix
         # Build co-occurrence matrix
         cooccurrence_matrix = {}
         for d in self.w:
@@ -337,9 +338,7 @@ class topic_model:
         # Co-occurrence matrix
         cooccurrence_matrix = coo_matrix((vals, (rows, cols)), shape=(self.N_cumsum[-1] if self.command_level_topics else self.D, self.V))
 		## Spectral decomposition of A
-        from scipy.sparse.linalg import svds
         U, S, _ = svds(cooccurrence_matrix, k=self.H if self.command_level_topics else self.K)
-        from sklearn.cluster import KMeans
         kmod = KMeans(n_clusters=self.H if self.command_level_topics else self.K, random_state=0).fit(U[:,::-1] * (S[::-1] ** .5))
         if not self.command_level_topics:
             self.t = kmod.labels_
