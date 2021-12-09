@@ -27,7 +27,7 @@ class topic_model:
         self.N_cumsum = np.cumsum(self.N)
         self.M = {}
         for d in self.w:
-            self.M[d] = [len(command) for command in self.w[d]]
+            self.M[d] = [len(self.w[d][command]) for command in self.w[d]]
         # Determine V is fixed or unbounded - if fixed, determine if it is given as input
         if not isinstance(fixed_V, bool):
             raise TypeError('fixed_V must be True or False.')
@@ -117,16 +117,17 @@ class topic_model:
             self.s = {}
             for d in self.w:
                 self.s[d] = np.zeros(len(self.w[d]), dtype=int)
-            self.S = np.zeros(self.K, self.H, dtype=int)
-            self.W = np.zeros(shape=(self.H + (1 if self.secondary_topics else 0), self.V), dtype=int)
+            self.S = np.zeros((self.K, self.H), dtype=int)
+            self.W = np.zeros(shape=(self.H + (1 if self.secondary_topic else 0), self.V), dtype=int)
         else:
-            self.W = np.zeros(shape=(self.K + (1 if self.secondary_topics else 0), self.V), dtype=int)             
+            self.W = np.zeros(shape=(self.K + (1 if self.secondary_topic else 0), self.V), dtype=int)             
         # Primary-secondary topic indicators
         if self.secondary_topic:
             self.z = {}
             for d in self.w:
+                self.z[d] = {} 
                 for j in self.w[d]:
-                    self.z[j,d] = np.zeros(len(self.w[d][j]), dtype=int)
+                    self.z[d][j] = np.zeros(len(self.w[d][j]), dtype=int)
             if self.command_level_topics:
                 self.M_star = np.zeros(shape=self.H, dtype=int)
                 self.Z = np.zeros(shape=self.H, dtype=int)
@@ -221,7 +222,7 @@ class topic_model:
                         self.z[d][j][i] = np.random.choice(2)
         ## Initialise counts
         self.init_counts()
-    
+
     ## Initializes chain using gensim   
     def gensim_init(self, chunksize = 2000, passes = 100, iterations = 1000, eval_every= None):
         # Convert words into strings (gensim requirement)
@@ -235,17 +236,18 @@ class topic_model:
                 for v in self.w[d][j]:
                     docs[-1].append(str(v))
         # Create dictionary
-        dictionary = Dictionary(docs)
+        dictionary = Dictionary(docs); temp = dictionary[0]
         # Create corpus
         corpus = [dictionary.doc2bow(doc) for doc in docs]
         # Set number of topics
         num_topics = (self.K if not self.command_level_topics else self.H) + (1 if self.secondary_topic else 0)
         # Model setup
-        model = LdaModel(corpus = corpus, id2word=dictionary.id2token, chunksize=chunksize, alpha='auto', eta='auto',
-                    iterations=iterations, num_topics=num_topics, passes=passes, eval_every=eval_every)
+        id2word = dictionary.id2token
+        model = LdaModel(corpus = corpus, id2word=id2word, chunksize=chunksize, alpha='auto', eta='auto',
+                    iterations=iterations, num_topics=num_topics, passes=passes, eval_every=eval_every,)
         # Obtain topics from LDA
         topic_allocation = {}
-        self.t = np.zeros(self.D)
+        self.t = np.zeros(self.D, dtype=int)
         if self.command_level_topics:
             self.s = {}
         if self.secondary_topic:
@@ -255,62 +257,67 @@ class topic_model:
             if not self.command_level_topics:
                 topic_allocation[d] = []
             else:
-                self.s[d] = np.zeros(self.N[d])
+                self.s[d] = np.zeros(self.N[d], dtype=int)
             for j in self.w[d]:
                 if self.command_level_topics:
                     topic_allocation[d,j] = []
                 for v in self.w[d][j]:
                     if self.command_level_topics:
-                        topic_allocation[d,j].append(np.argmax(topic_term[:,v]))
+                        topic_allocation[d,j] = np.append(topic_allocation[d,j],np.argmax(topic_term[:,v]))
                     else:
-                        topic_allocation[d].append(np.argmax(topic_term[:,v]))
+                        topic_allocation[d] = np.append(topic_allocation[d],np.argmax(topic_term[:,v]))
                 if self.command_level_topics:
                     if self.secondary_topic:
                         all_counter += Counter(topic_allocation[d,j])
                     else:
-                        self.s[d][j] = Counter(topic_allocation[d,j]).most_common(1)[0][0]
+                        self.s[d][j] = int(Counter(topic_allocation[d,j]).most_common(1)[0][0])
             if not self.command_level_topics:
                 if self.secondary_topic:
                     all_counter += Counter(topic_allocation[d])
                 else:
-                    self.t[d] = Counter(topic_allocation[d]).most_common(1)[0][0]
+                    self.t[d] = int(Counter(topic_allocation[d]).most_common(1)[0][0])
         # If secondary topics are used, find the most common topic
         if self.secondary_topic:
             self.z = {}
-            secondary_t = all_counter.most_common(1)[0][0]
+            secondary_t = int(all_counter.most_common(1)[0][0])
             for d in self.w:
                 self.z[d] = {}
                 if not self.command_level_topics:
-                    primary_t = Counter(topic_allocation[d][topic_allocation[d] != secondary_t]).most_common(1)[0][0]
-                    self.t[d] = primary_t - (1 if primary_t > secondary_t else 0)
+                    if np.sum(topic_allocation[d] != secondary_t) > 0:
+                        primary_t = int(Counter(topic_allocation[d][topic_allocation[d] != secondary_t]).most_common(1)[0][0])
+                        self.t[d] = primary_t - (1 if primary_t > secondary_t else 0)
+                    else:
+                        self.t[d] = np.random.choice(self.K)
                 for j in self.w[d]:
-                    self.z[d][j] = []
                     if self.command_level_topics:
-                        primary_t = Counter(topic_allocation[d,j][topic_allocation[d,j] != secondary_t]).most_common(1)[0][0]
-                        self.s[d][j] = primary_t - (1 if primary_t > secondary_t else 0)
-                    for v in self.w[d][j]:
-                        self.z[d][j] += [np.argmax([topic_term[secondary_t,v], topic_term[primary_t,v]])]
+                        if np.sum(topic_allocation[d,j] != secondary_t) > 0:
+                            primary_t = int(Counter(topic_allocation[d,j][topic_allocation[d,j] != secondary_t]).most_common(1)[0][0])
+                            self.s[d][j] = primary_t - (1 if primary_t > secondary_t else 0)
+                        else:
+                            self.s[d][j] = np.random.choice(self.H)     
+                    self.z[d][j] = np.array([int(np.argmax([topic_term[secondary_t,v], topic_term[primary_t,v]])) for v in self.w[d][j]])
         # If command-level topics are used, repeat gensim
         if self.command_level_topics:
             # Convert words (command-level topics) into strings (gensim requirement)
             docs = []
             for d in self.w:
                 docs.append([])
-                for s in self.w[d][j]:
+                for s in self.s[d]:
                     docs[-1].append(str(s))
             # Dictionary and corpus
-            dictionary = Dictionary(docs)
+            dictionary = Dictionary(docs); temp = dictionary[0]
             corpus = [dictionary.doc2bow(doc) for doc in docs]
             # Model setup
-            model = LdaModel(corpus = corpus, id2word=dictionary.id2token, chunksize=chunksize, alpha='auto', eta='auto',
-                    iterations=iterations, num_topics=self.K, passes=passes, eval_every=eval_every)
+            id2word = dictionary.id2token
+            model = LdaModel(corpus = corpus, id2word=id2word, chunksize=chunksize, alpha='auto', eta='auto',
+                    iterations=iterations, num_topics=self.K, passes=passes, eval_every=eval_every,)
             topic_term = model.get_topics()
             # Estimate topics
             for d in self.w:
                 topic_allocation = []
                 for s in self.s[d]:
-                    topic_allocation.append(np.argmax(topic_term[:,s]))
-                self.t[d] = Counter(topic_allocation).most_common(1)[0][0]
+                    topic_allocation = np.append(topic_allocation,np.argmax(topic_term[:,s]))
+                self.t[d] = int(Counter(topic_allocation).most_common(1)[0][0])
         # Initialise counts
         self.init_counts()
 
@@ -435,7 +442,7 @@ class topic_model:
                     self.M_star[td_new] += np.sum(self.M[d])
                     self.Z[td_new] += Zd
 
-   ## Resample session-level topics
+    ## Resample session-level topics
     def resample_command_topics(self, size=1, indices=None):
         if not self.command_level_topics:
             raise TypeError('Command-level topics cannot be resampled if command_level_topics is not used.')
@@ -478,6 +485,7 @@ class topic_model:
         probs = np.exp(probs - logsumexp(probs))
         # Resample command-level topic
         s_new = np.random.choice(self.H, p=probs)
+        # Update counts
         self.S[td,s_new] += 1
         for v in Wd:
             self.W[s_new + (1 if self.secondary_topic else 0),v] += Wd[v]
