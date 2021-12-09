@@ -6,6 +6,7 @@ from gensim.models import LdaModel
 from gensim.corpora import Dictionary
 from scipy.sparse import coo_matrix
 from scipy.sparse.linalg import svds
+from numpy.linalg import svd
 from sklearn.cluster import KMeans
 
 class topic_model:
@@ -25,6 +26,7 @@ class topic_model:
         # Length of each document
         self.N = np.array([len(self.w[d]) for d in self.w])
         self.N_cumsum = np.cumsum(self.N)
+        self.N_cumsum0 = np.append(0,self.N_cumsum)
         self.M = {}
         for d in self.w:
             self.M[d] = [len(self.w[d][command]) for command in self.w[d]]
@@ -325,11 +327,13 @@ class topic_model:
     def spectral_init(self):
         if self.secondary_topic:
             raise TypeError('Spectral clustering is only implemented for initialisation when secondary topics are not used.')
+        if self.command_level_topics and self.K > self.H:
+            raise ValueError('K must be larger than H for initialising with spectral clustering.')
         # Build co-occurrence matrix
         cooccurrence_matrix = {}
         for d in self.w:
             if self.command_level_topics:
-                index = (self.N_cumsum[d-1] if self. d > 0 else 0)
+                index = (self.N_cumsum[d-1] if d > 0 else 0)
                 for j in self.w[d]:
                     cooccurrence_matrix[index+j] = Counter(self.w[d][j])
             else:
@@ -339,13 +343,13 @@ class topic_model:
         # Obtain matrix
         vals = []; rows = []; cols = []
         for key in cooccurrence_matrix:
-            vals += [list(cooccurrence_matrix[key].values())]
+            vals += list(cooccurrence_matrix[key].values())
             rows += [key] * len(cooccurrence_matrix[key])
-            cols += [list(cooccurrence_matrix[key].keys())]
+            cols += list(cooccurrence_matrix[key].keys())
         # Co-occurrence matrix
         cooccurrence_matrix = coo_matrix((vals, (rows, cols)), shape=(self.N_cumsum[-1] if self.command_level_topics else self.D, self.V))
 		## Spectral decomposition of A
-        U, S, _ = svds(cooccurrence_matrix, k=self.H if self.command_level_topics else self.K)
+        U, S, _ = svds(cooccurrence_matrix.asfptype(), k=self.H if self.command_level_topics else self.K)
         kmod = KMeans(n_clusters=self.H if self.command_level_topics else self.K, random_state=0).fit(U[:,::-1] * (S[::-1] ** .5))
         if not self.command_level_topics:
             self.t = kmod.labels_
@@ -359,14 +363,18 @@ class topic_model:
             # Obtain matrix
             vals = []; rows = []; cols = []
             for key in cooccurrence_matrix:
-                vals += [list(cooccurrence_matrix[key].values())]
+                vals += list(cooccurrence_matrix[key].values())
                 rows += [key] * len(cooccurrence_matrix[key])
-                cols += [list(cooccurrence_matrix[key].keys())]
+                cols += list(cooccurrence_matrix[key].keys())
             # Co-occurrence matrix
             cooccurrence_matrix = coo_matrix((vals, (rows, cols)), shape=(self.D, self.H))
             ## Spectral decomposition
-            U, S, _ = svds(cooccurrence_matrix, k=self.K)
-            kmod = KMeans(n_clusters=self.K, random_state=0).fit(U[:,::-1] * (S[::-1] ** .5))
+            if self.K < self.H:
+                U, S, _ = svds(cooccurrence_matrix.asfptype(), k=self.K)
+                kmod = KMeans(n_clusters=self.K, random_state=0).fit(U[:,::-1] * (S[::-1] ** .5))
+            else:
+                U, S, _ = svd(cooccurrence_matrix.todense(), full_matrices=False)
+                kmod = KMeans(n_clusters=self.K, random_state=0).fit(np.array(U)[:,::-1] * (S[::-1] ** .5))
             self.t = kmod.labels_
         # Initialise counts
         self.init_counts()     
@@ -404,32 +412,28 @@ class topic_model:
             # Calculate allocation probabilities
             probs = np.log(self.gamma + self.T)
             if self.command_level_topics:
-                if self.secondary_topic:
-                    for h in Sd:
-                        probs += np.sum(np.log(np.add.outer(self.eta + self.S[1:,h], np.arange(Sd[h]))), axis=1)
-                    probs -= np.sum(np.log(np.add.outer(np.sum(self.eta + self.S[1:], axis=1), np.arange(np.sum(Sd.values())))), axis=1)
-                else:
-                    for h in Sd:
-                        probs += np.sum(np.log(np.add.outer(self.eta + self.S[:,h], np.arange(Sd[h]))), axis=1)
-                    probs -= np.sum(np.log(np.add.outer(np.sum(self.eta + self.S, axis=1), np.arange(np.sum(Sd.values())))), axis=1)               
+                for h in Sd:
+                    probs += np.sum(np.log(np.add.outer(self.eta + self.S[:,h], np.arange(Sd[h]))), axis=1)
+                probs -= np.sum(np.log(np.add.outer(np.sum(self.eta + self.S, axis=1), np.arange(np.sum(list(Sd.values()))))), axis=1)               
             else:
                 if self.secondary_topic:
                     ## w | t,z components
                     for v in Wd:
                         probs += np.sum(np.log(np.add.outer(self.tau + self.W[1:,v], np.arange(Wd[v]))), axis=1)
-                    probs -= np.sum(np.log(np.add.outer(np.sum(self.tau + self.W[1:], axis=1), np.arange(np.sum(Wd.values())))), axis=1)
+                    probs -= np.sum(np.log(np.add.outer(np.sum(self.tau + self.W[1:], axis=1), np.arange(np.sum(list(Wd.values()))))), axis=1)
                     ## z | t components
-                    probs += np.sum(np.log(self.alpha + self.Z, np.arange(Zd)), axis=1)
-                    probs += np.sum(np.log(self.alpha0 + self.M_star - self.Z, np.arange(np.sum(self.M[d]) - Zd)), axis=1)
-                    probs -= np.sum(np.log(self.alpha0 + self.alpha + self.M_star, np.arange(np.sum(self.M[d]))), axis=1)
+                    probs += np.sum(np.log(np.add.outer(self.alpha + self.Z, np.arange(Zd))), axis=1)
+                    probs += np.sum(np.log(np.add.outer(self.alpha0 + self.M_star - self.Z, np.arange(np.sum(self.M[d]) - Zd))), axis=1)
+                    probs -= np.sum(np.log(np.add.outer(self.alpha0 + self.alpha + self.M_star, np.arange(np.sum(self.M[d])))), axis=1)
                 else:
                     for v in Wd:
                         probs += np.sum(np.log(np.add.outer(self.tau + self.W[:,v], np.arange(Wd[v]))), axis=1)
-                    probs -= np.sum(np.log(np.add.outer(np.sum(self.tau + self.W, axis=1), np.arange(np.sum(Wd.values())))), axis=1)
+                    probs -= np.sum(np.log(np.add.outer(np.sum(self.tau + self.W, axis=1), np.arange(np.sum(list(Wd.values()))))), axis=1)
             # Transform the probabilities
             probs = np.exp(probs - logsumexp(probs))
             # Resample session-level topic
             td_new = np.random.choice(self.K, p=probs)
+            self.t[d] = td_new
             # Update counts
             self.T[td_new] += 1
             if self.command_level_topics:
@@ -472,19 +476,20 @@ class topic_model:
                 ## w | s,z components
                 for v in Wd:
                     probs += np.sum(np.log(np.add.outer(self.tau + self.W[1:,v], np.arange(Wd[v]))), axis=1)
-                probs -= np.sum(np.log(np.add.outer(np.sum(self.tau + self.W[1:], axis=1), np.arange(np.sum(Wd.values())))), axis=1)
+                probs -= np.sum(np.log(np.add.outer(np.sum(self.tau + self.W[1:], axis=1), np.arange(np.sum(list(Wd.values()))))), axis=1)
                 ## z | s components
-                probs += np.sum(np.log(self.alpha + self.Z, np.arange(Zdj)), axis=1)
-                probs += np.sum(np.log(self.alpha0 + self.M_star - self.Z, np.arange(self.M[d][j] - Zdj)), axis=1)
-                probs -= np.sum(np.log(self.alpha0 + self.alpha + self.M_star, np.arange(self.M[d][j])), axis=1)
+                probs += np.sum(np.log(np.add.outer(self.alpha + self.Z, np.arange(Zdj))), axis=1)
+                probs += np.sum(np.log(np.add.outer(self.alpha0 + self.M_star - self.Z, np.arange(self.M[d][j] - Zdj))), axis=1)
+                probs -= np.sum(np.log(np.add.outer(self.alpha0 + self.alpha + self.M_star, np.arange(self.M[d][j]))), axis=1)
             else:
                 for v in Wd:
                     probs += np.sum(np.log(np.add.outer(self.tau + self.W[:,v], np.arange(Wd[v]))), axis=1)
-                probs -= np.sum(np.log(np.add.outer(np.sum(self.tau + self.W, axis=1), np.arange(np.sum(Wd.values())))), axis=1)
+                probs -= np.sum(np.log(np.add.outer(np.sum(self.tau + self.W, axis=1), np.arange(np.sum(list(Wd.values()))))), axis=1)
         # Transform the probabilities
         probs = np.exp(probs - logsumexp(probs))
         # Resample command-level topic
         s_new = np.random.choice(self.H, p=probs)
+        self.s[d][j] = s_new
         # Update counts
         self.S[td,s_new] += 1
         for v in Wd:
@@ -510,7 +515,7 @@ class topic_model:
             v = int(self.w[d][j][i])
             z_old = int(self.z[d][j][i])
             if self.command_level_topics:
-                topic = self.s[d,j]
+                topic = self.s[d][j]
             else:
                 topic = self.t[d]
             self.Z[topic] -= z_old
@@ -522,6 +527,7 @@ class topic_model:
             probs = np.exp(probs - logsumexp(probs))
             # Resample z
             z_new = np.random.choice(range(2), p=probs)
+            self.z[d][j][i] = z_new
             # Update counts
             self.Z[topic] += z_new
             self.W[(topic+1)*z_new,v] += 1
@@ -552,28 +558,26 @@ class topic_model:
             if split:
                 # Split move
                 indices = np.where(self.t == t)[0]
-                indices = indices[indices != d and indices != d_prime]
+                indices = indices[np.logical_and(indices != d, indices != d_prime)]
                 if random_allocation:
-                    allocation = np.random.choice(2,size=len(indices))
-                    T_prop = np.zeros(2); T_prop[0] += np.sum(allocation); T_prop[1] = np.sum(1-allocation)
+                    t_prop = np.random.choice(2,size=len(indices))
+                    T_prop = np.zeros(2); T_prop[0] += np.sum(t_prop); T_prop[1] = np.sum(1-t_prop)
                     if self.command_level_topics:
                         S_prop = np.zeros((2,self.H))
-                        S_prop[0] = Counter()
-                        for doc in indices[allocation]:
+                        for doc in indices[t_prop]:
                             Q = Counter(self.s[doc])
                             for h in Q:
-                                S_prop[0] += Q[h]
-                        S_prop[t_ast] = Counter()
-                        for doc in indices[1-allocation]:
+                                S_prop[0,h] += Q[h]
+                        for doc in indices[1-t_prop]:
                             Q = Counter(self.s[doc])
                             for h in Q:
-                                S_prop[t_ast] += Q[h]
+                                S_prop[1,h] += Q[h]
                     else:
                         W_prop = np.zeros((2,self.V))
                         if self.secondary_topic:
                             M_ast_prop = np.zeros(2)
                             Z_prop = np.zeros(2)
-                        for doc in indices[allocation]:
+                        for doc in indices[t_prop]:
                             for j in self.w[d]:
                                 Q = Counter(self.w[doc][j] if not self.secondary_topic else self.w[doc][j][self.z[doc][j] == 1])
                                 for v in Q:
@@ -581,7 +585,7 @@ class topic_model:
                                 if self.secondary_topic:
                                     M_ast_prop[0] += self.M[doc][j]
                                     Z_prop[0] += np.sum(self.z[doc][j])
-                        for doc in indices[1-allocation]:
+                        for doc in indices[1-t_prop]:
                             for j in self.w[doc]:
                                 Q = Counter(self.w[doc][j] if not self.secondary_topic else self.w[doc][j][self.z[doc][j] == 1])
                                 for v in Q:
@@ -620,8 +624,8 @@ class topic_model:
                                 Z_prop[1] += np.sum(self.z[d_prime][j])
             else:
                 # Merge move
-                indices = np.where(self.t == t or self.t == t_ast)
-                indices = indices[indices != d and indices != d_prime]
+                indices = np.where(np.logical_or(self.t == t, self.t == t_ast))[0]
+                indices = indices[np.logical_and(indices != d, indices != d_prime)]
                 T_prop = np.array([self.T[t] + self.T[t_ast],0])
                 T_temp = np.ones(2)
                 if self.command_level_topics:
@@ -657,7 +661,10 @@ class topic_model:
             # Caclulate proposal probability
             if not random_allocation:
                 probs_proposal = 0
-                for doc in np.random.choice(indices,size=len(indices),replace=False):
+                indices = np.random.choice(indices,size=len(indices),replace=False)
+                if split:
+                    t_prop = []
+                for doc in indices:
                     if self.command_level_topics:
                         Sd = Counter(self.s[doc])
                     else:
@@ -678,37 +685,39 @@ class topic_model:
                         if self.command_level_topics:
                             for h in Sd:
                                 probs += np.sum(np.log(np.add.outer(self.eta + S_prop[:,h], np.arange(Sd[h]))), axis=1)
-                            probs -= np.sum(np.log(np.add.outer(np.sum(self.eta + S_prop, axis=1), np.arange(np.sum(Sd.values())))), axis=1)               
+                            probs -= np.sum(np.log(np.add.outer(np.sum(self.eta + S_prop, axis=1), np.arange(np.sum(list(Sd.values()))))), axis=1)               
                         else:
                             ## w | t,z components
                             for v in Wd:
                                 probs += np.sum(np.log(np.add.outer(self.tau + W_prop[:,v], np.arange(Wd[v]))), axis=1)
-                            probs -= np.sum(np.log(np.add.outer(np.sum(self.tau + W_prop, axis=1), np.arange(np.sum(Wd.values())))), axis=1)
+                            probs -= np.sum(np.log(np.add.outer(np.sum(self.tau + W_prop, axis=1), np.arange(np.sum(list(Wd.values()))))), axis=1)
                             if self.secondary_topic:
                                 ## z | t components
-                                probs += np.sum(np.log(self.alpha + Z_prop, np.arange(Zd)), axis=1)
-                                probs += np.sum(np.log(self.alpha0 + M_ast_prop - Z_prop, np.arange(np.sum(self.M[doc]) - Zd)), axis=1)
-                                probs -= np.sum(np.log(self.alpha0 + self.alpha + M_ast_prop, np.arange(np.sum(self.M[doc]))), axis=1)
+                                probs += np.sum(np.log(np.add.outer(self.alpha + Z_prop, np.arange(Zd))), axis=1)
+                                probs += np.sum(np.log(np.add.outer(self.alpha0 + M_ast_prop - Z_prop, np.arange(np.sum(self.M[doc])) - Zd)), axis=1)
+                                probs -= np.sum(np.log(np.add.outer(self.alpha0 + self.alpha + M_ast_prop, np.arange(np.sum(self.M[doc])))), axis=1)
                     else:
                         probs = np.log(self.gamma + T_temp)
                         if self.command_level_topics:
                             for h in Sd:
                                 probs += np.sum(np.log(np.add.outer(self.eta + S_temp[:,h], np.arange(Sd[h]))), axis=1)
-                            probs -= np.sum(np.log(np.add.outer(np.sum(self.eta + S_temp, axis=1), np.arange(np.sum(Sd.values())))), axis=1)               
+                            probs -= np.sum(np.log(np.add.outer(np.sum(self.eta + S_temp, axis=1), np.arange(np.sum(list(Sd.values()))))), axis=1)               
                         else:
                             ## w | t,z components
                             for v in Wd:
                                 probs += np.sum(np.log(np.add.outer(self.tau + W_temp[:,v], np.arange(Wd[v]))), axis=1)
-                            probs -= np.sum(np.log(np.add.outer(np.sum(self.tau + W_temp, axis=1), np.arange(np.sum(Wd.values())))), axis=1)
+                            probs -= np.sum(np.log(np.add.outer(np.sum(self.tau + W_temp, axis=1), np.arange(np.sum(list(Wd.values()))))), axis=1)
                             if self.secondary_topic:
                                 ## z | t components
-                                probs += np.sum(np.log(self.alpha + Z_temp, np.arange(Zd)), axis=1)
-                                probs += np.sum(np.log(self.alpha0 + M_ast_temp - Z_temp, np.arange(np.sum(self.M[doc]) - Zd)), axis=1)
-                                probs -= np.sum(np.log(self.alpha0 + self.alpha + M_ast_temp, np.arange(np.sum(self.M[doc]))), axis=1)
+                                probs += np.sum(np.log(np.add.outer(self.alpha + Z_temp, np.arange(Zd))), axis=1)
+                                probs += np.sum(np.log(np.add.outer(self.alpha0 + M_ast_temp - Z_temp, np.arange(np.sum(self.M[doc]) - Zd))), axis=1)
+                                probs -= np.sum(np.log(np.add.outer(self.alpha0 + self.alpha + M_ast_temp, np.arange(np.sum(self.M[doc])))), axis=1)
                     # Transform the probabilities
                     probs = np.exp(probs - logsumexp(probs))
                     # Resample
                     td_new = np.random.choice(2, p=probs)
+                    if split:
+                        t_prop += [td_new]
                     # Calculate Q's for the MH ratio
                     probs_proposal += np.log(probs[td_new])
                     if split:
@@ -742,14 +751,14 @@ class topic_model:
             if self.command_level_topics:
                 acceptance_ratio += np.sum(loggamma(self.eta + S_prop)) - np.sum(loggamma(self.eta + self.S[t_indices,:]))
                 acceptance_ratio -= np.sum(loggamma(np.sum(self.eta + S_prop, axis=1))) - np.sum(loggamma(np.sum(self.eta + self.S[t_indices], axis=1)))
+            else:
+                acceptance_ratio += np.sum(loggamma(self.tau + W_prop)) - np.sum(loggamma(self.tau + self.W[t_indices + (1 if self.secondary_topic else 0)]))
+                acceptance_ratio -= np.sum(loggamma(np.sum(self.tau + W_prop, axis=1))) - np.sum(loggamma(np.sum(self.tau + self.W[t_indices + (1 if self.secondary_topic else 0)], axis=1)))
                 if self.secondary_topic:
                     acceptance_ratio += np.sum(loggamma(self.alpha + Z_prop)) + np.sum(loggamma(self.alpha0 + M_ast_prop - Z_prop))
                     acceptance_ratio -= np.sum(loggamma(self.alpha + self.alpha0 + M_ast_prop))
                     acceptance_ratio += np.sum(loggamma(self.alpha + self.Z[t_indices])) + np.sum(loggamma(self.alpha0 + self.M_star[t_indices] - self.Z[t_indices]))
-                    acceptance_ratio -= np.sum(loggamma(self.alpha + self.alpha0 + self.M_star[t_indices]))
-            else:
-                acceptance_ratio += np.sum(loggamma(self.tau + W_prop)) - np.sum(loggamma(self.tau + self.W[t_indices + (1 if self.secondary_topic else 0)]))
-                acceptance_ratio -= np.sum(loggamma(np.sum(self.tau + W_prop, axis=1))) - np.sum(loggamma(np.sum(self.tau + self.W[t_indices + (1 if self.secondary_topic else 0)], axis=1)))
+                    acceptance_ratio -= np.sum(loggamma(self.alpha + self.alpha0 + self.M_star[t_indices]))            
             if split: 
                 acceptance_ratio -= probs_proposal
             else:
@@ -758,6 +767,13 @@ class topic_model:
             accept = (-np.random.exponential(1) < acceptance_ratio)
             # Update if move is accepted
             if accept:
+                if split:
+                    self.t[d_prime] = t_ast
+                    self.t[indices[np.array(t_prop) == 0]] = t
+                    self.t[indices[np.array(t_prop) == 1]] = t_ast
+                else:
+                    self.t[indices] = t
+                    self.t[d] = t; self.t[d_prime] = t
                 self.T[t] = T_prop[0]; self.T[t_ast] = T_prop[1]
                 if self.command_level_topics:
                     self.S[t] = S_prop[0]; self.S[t_ast] = S_prop[1]
@@ -773,28 +789,28 @@ class topic_model:
             raise TypeError('Command-level topics cannot be resampled if command_level_topics is not used.')
         indices_int = np.random.choice(self.N_cumsum[-1], size=2, replace=False)
         ## First index
-        d = np.argmax(self.N_cumsum[indices_int[0] < self.N_cumsum])
-        j = indices_int[0] - self.N_cumsum[d]
+        d = np.argmax(self.N_cumsum0[np.logical_not(indices_int[0] < self.N_cumsum0)])
+        j = indices_int[0] - self.N_cumsum0[d]
         ## Second index
-        d_prime = np.argmax(self.N_cumsum[indices_int[1] < self.N_cumsum])
-        j_prime = indices_int[1] - self.N_cumsum[d]
-        # Propose a split or merge move according to the sampled values
+        d_prime = np.argmax(self.N_cumsum0[np.logical_not(indices_int[1] < self.N_cumsum0)])
+        j_prime = indices_int[1] - self.N_cumsum0[d_prime]
+        # Propose a split or merge move according to the sampled values & check boundary conditions
         boundary = False
         if self.s[d][j] == self.s[d_prime][j_prime]:
-            if np.sum(self.S,axis=0) == 0:
+            if np.sum(np.sum(self.S,axis=0) == 0) == 0:
                 boundary = True
             else:
                 split = True
                 s = self.s[d][j]
                 s_ast = np.min(np.where(np.sum(self.S,axis=0) == 0)[0])
         else:
-            if np.sum(self.S,axis=0) < self.H:
+            if np.sum(np.sum(self.S,axis=0) == 0) < self.H:
                 split = False
                 s = np.min([self.s[d][j],self.s[d_prime][j_prime]])
                 s_ast = np.max([self.s[d][j],self.s[d_prime][j_prime]])
             else:
                 boundary = True
-        # Check if the proposed move is not at the boundary
+        # Check if the proposed move is not at the boundary, otherwise do not execute anything
         if not boundary:
             # Preprocessing for split / merge move
             if split:
@@ -802,13 +818,23 @@ class topic_model:
                 indices = {} 
                 for doc in self.s:
                     indices[doc] = np.where(self.s[doc] == s)[0]
+                indices[d] = indices[d][indices[d] != j]
+                indices[d_prime] = indices[d_prime][indices[d_prime] != j_prime]
+                # Shuffle indices
+                indices_d = np.random.choice(list(indices.keys()), size=len(indices), replace=False)
+                indices_s = {}
+                for doc in indices_d:
+                    indices_s[doc] = np.random.choice(indices[doc], size=len(indices[doc]), replace=False)
+                # Proposals
                 W_prop = ((2,self.V))
                 if random_allocation:
+                    s_prop = {}
                     S_prop = np.zeros((2,self.K))
                     if self.secondary_topic:
                         M_ast_prop = np.zeros(2); Z_prop = np.zeros(2)
                     for doc in self.s:
                         allocation = np.random.choice(2,size=len(indices[doc]))
+                        s_prop[doc] = allocation
                         S_prop[0,self.t[doc]] += np.sum(allocation)
                         S_prop[1,self.t[doc]] += np.sum(1-allocation)
                         for command in self.w[d]:
@@ -830,7 +856,15 @@ class topic_model:
                 # Merge move
                 indices = {} 
                 for doc in self.s:
-                    indices[doc] = np.where(self.s[doc] == s or self.s[doc] == s_ast)[0]
+                    indices[doc] = np.where(np.logical_or(self.s[doc] == s, self.s[doc] == s_ast))[0]
+                indices[d] = indices[d][indices[d] != j]
+                indices[d_prime] = indices[d_prime][indices[d_prime] != j_prime]
+                # Shuffle indices
+                indices_d = np.random.choice(list(indices.keys()), size=len(indices), replace=False)
+                indices_s = {}
+                for doc in indices_d:
+                    indices_s[doc] = np.random.choice(indices[doc], size=len(indices[doc]), replace=False)
+                # Proposal quantities
                 S_prop = np.zeros((2,self.K)); S_prop[0] = self.S[:,s] + self.S[:,s_ast]
                 S_temp = np.zeros((2,self.K)); S_temp[0,self.t[d]] = 1; S_temp[1,self.t[d_prime]] = 1
                 W_prop = np.zeros((2,self.V)); W_prop[0] = self.W[s + (1 if self.secondary_topic else 0)] + self.W[s_ast + (1 if self.secondary_topic else 0)]
@@ -852,9 +886,13 @@ class topic_model:
             # Caclulate proposal probability
             if not random_allocation:
                 probs_proposal = 0
-                for doc in np.random.choice(list(indices.keys()), size=len(indices), replace=False):
+                if split:
+                    s_prop = {}
+                for doc in indices_d:
                     td = self.t[doc]
-                    for command in np.random.choice(list(indices[doc].keys()), size=len(indices[doc]), replace=False):
+                    if split:
+                        s_prop[doc] = []
+                    for command in indices_s[doc]:
                         if self.secondary_topic:
                             Zjd = np.sum(self.z[doc][command])
                             Wjd = Counter(self.w[doc][command][self.z[doc][command] == 1])
@@ -865,24 +903,26 @@ class topic_model:
                             probs = np.log(self.eta + S_prop[:,td])
                             for v in Wjd:
                                 probs += np.sum(np.log(np.add.outer(self.tau + W_prop[:,v], np.arange(Wjd[v]))), axis=1)
-                            probs -= np.sum(np.log(np.add.outer(np.sum(self.tau + W_prop, axis=1), np.arange(np.sum(Wjd.values())))), axis=1)
+                            probs -= np.sum(np.log(np.add.outer(np.sum(self.tau + W_prop, axis=1), np.arange(np.sum(list(Wjd.values()))))), axis=1)
                             if self.secondary_topic:
-                                probs += np.sum(np.log(self.alpha + Z_prop, np.arange(Zjd)), axis=1)
-                                probs += np.sum(np.log(self.alpha0 + M_ast_prop - Z_prop, np.arange(self.M[doc][command] - Zjd)), axis=1)
-                                probs -= np.sum(np.log(self.alpha0 + self.alpha + M_ast_prop, np.arange(self.M[doc][command])), axis=1)              
+                                probs += np.sum(np.log(np.add.outer(self.alpha + Z_prop, np.arange(Zjd))), axis=1)
+                                probs += np.sum(np.log(np.add.outer(self.alpha0 + M_ast_prop - Z_prop, np.arange(self.M[doc][command] - Zjd))), axis=1)
+                                probs -= np.sum(np.log(np.add.outer(self.alpha0 + self.alpha + M_ast_prop, np.arange(self.M[doc][command]))), axis=1)              
                         else:
-                            probs = np.log(self.eta + S_temp)
+                            probs = np.log(self.eta + S_temp[:,td])
                             for v in Wjd:
                                 probs += np.sum(np.log(np.add.outer(self.tau + W_temp[:,v], np.arange(Wjd[v]))), axis=1)
-                            probs -= np.sum(np.log(np.add.outer(np.sum(self.tau + W_temp, axis=1), np.arange(np.sum(Wjd.values())))), axis=1)
+                            probs -= np.sum(np.log(np.add.outer(np.sum(self.tau + W_temp, axis=1), np.arange(np.sum(list(Wjd.values()))))), axis=1)
                             if self.secondary_topic:
-                                probs += np.sum(np.log(self.alpha + Z_temp, np.arange(Zjd)), axis=1)
-                                probs += np.sum(np.log(self.alpha0 + M_ast_temp - Z_temp, np.arange(self.M[doc][command] - Zjd)), axis=1)
-                                probs -= np.sum(np.log(self.alpha0 + self.alpha + M_ast_temp, np.arange(self.M[doc][command])), axis=1)                                         
+                                probs += np.sum(np.log(np.add.outer(self.alpha + Z_temp, np.arange(Zjd))), axis=1)
+                                probs += np.sum(np.log(np.add.outer(self.alpha0 + M_ast_temp - Z_temp, np.arange(self.M[doc][command] - Zjd))), axis=1)
+                                probs -= np.sum(np.log(np.add.outer(self.alpha0 + self.alpha + M_ast_temp, np.arange(self.M[doc][command]))), axis=1)                                         
                     # Transform the probabilities
                     probs = np.exp(probs - logsumexp(probs))
                     # Resample
                     sjd_new = np.random.choice(2, p=probs)
+                    if split:
+                        s_prop[doc] += [sjd_new]
                     # Calculate Q's for the MH ratio
                     probs_proposal += np.log(probs[sjd_new])
                     if split:
@@ -920,6 +960,17 @@ class topic_model:
             accept = (-np.random.exponential(1) < acceptance_ratio)
             # Update if move is accepted
             if accept:
+                if split:
+                    self.s[d][j] = s
+                    self.s[d_prime][j_prime] = s_ast
+                    for doc in indices_d: 
+                        self.s[indices_s[doc] == 0] = s
+                        self.s[indices_s[doc] == 1] = s_ast
+                else:
+                    self.s[d][j] = s
+                    self.s[d_prime][j_prime] = s
+                    for doc in indices:
+                        self.s[indices[doc]] = s
                 self.S[s] = S_prop[0]; self.S[s_ast] = S_prop[1]
                 self.W[s + (1 if self.secondary_topic else 0)] = W_prop[0]; self.W[s_ast + (1 if self.secondary_topic else 0)] = W_prop[1] 
                 if self.secondary_topic:
