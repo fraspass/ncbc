@@ -198,7 +198,7 @@ class topic_model:
         if z is not None: 
             if not self.secondary_topic:
                 raise TypeError('Secondary topics cannot be initialised if secondary_topic is not used.')
-            elif not isinstance(s, dict):
+            elif not isinstance(z, dict):
                 raise TypeError('The initial value for z should be a dictionary.')
             else:
                 self.z = z
@@ -701,7 +701,7 @@ class topic_model:
                             if self.secondary_topic:
                                 ## z | t components
                                 probs += np.sum(np.log(np.add.outer(self.alpha + Z_prop, np.arange(Zd))), axis=1)
-                                probs += np.sum(np.log(np.add.outer(self.alpha0 + M_ast_prop - Z_prop, np.arange(np.sum(self.M[doc])) - Zd)), axis=1)
+                                probs += np.sum(np.log(np.add.outer(self.alpha0 + M_ast_prop - Z_prop, np.arange(np.sum(self.M[doc]) - Zd))), axis=1)
                                 probs -= np.sum(np.log(np.add.outer(self.alpha0 + self.alpha + M_ast_prop, np.arange(np.sum(self.M[doc])))), axis=1)
                     else:
                         probs = np.log(self.gamma + T_temp)
@@ -998,7 +998,7 @@ class topic_model:
                     self.Z[s] = Z_prop[0]; self.Z[s_ast] = Z_prop[1]
 
     ## Runs MCMC chain
-    def MCMC(self, iterations, verbose=True):
+    def MCMC(self, iterations, burnin=0, verbose=True, calculate_ll=False):
         # Moves
         moves = ['t', 'split_merge_session']
         moves_probs = [5, 1]
@@ -1009,10 +1009,15 @@ class topic_model:
             moves += ['z']
             moves_probs += [10]
         moves_probs /= np.sum(moves_probs)
-        for it in range(iterations):
+        if calculate_ll:
+            ll = []
+        for it in range(iterations+burnin):
             # Print progression
             if verbose:
-                print('\rProgression: ', str(it+1), ' / ', str(iterations), sep='', end='')
+                if it < burnin:
+                    print('\rBurnin: ', str(it+1), ' / ', str(burnin), sep='', end='')
+                else:
+                    print('\rProgression: ', str(it+1), ' / ', str(iterations), sep='', end='')
             # Sample move
             move = np.random.choice(moves, p=moves_probs)
             # Do move
@@ -1026,3 +1031,7 @@ class topic_model:
                 self.split_merge_session()
             else:
                 self.split_merge_command()
+            if calculate_ll:
+                ll += [self.marginal_loglikelihood()]
+        if calculate_ll:
+            return ll
