@@ -144,6 +144,8 @@ def simulate_data(D, K=0, fixed_K = True, H=0, fixed_H = True, V=0, fixed_V = Tr
         if secondary_topic:
             z[d] = {}
         for j in range(N[d]):
+            if secondary_topic:
+                w[d][j] = np.zeros(M[d][j], dtype=int)
             if not command_level_topics:
                 if not secondary_topic:
                     w[d][j] = np.random.choice(V if fixed_V else stick_truncation, size=M[d][j], p=phi[t[d]])

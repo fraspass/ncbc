@@ -210,8 +210,9 @@ class topic_model:
         self.t = np.random.choice(self.K, size=self.D)
         for d in range(self.D):
             if self.command_level_topics:
-                self.s[d] = self.s[d] = np.random.choice(self.H, size=len(self.w[d]))
+                self.s[d] = np.random.choice(self.H, size=len(self.w[d]))
             if self.secondary_topic:
+                self.z[d] = {}
                 for j in self.w[d]:
                     self.z[d][j] = np.random.choice(2, size=self.M[d][j])
         ## Initialise counts
@@ -525,7 +526,7 @@ class topic_model:
             self.W[(topic+1)*z_new,v] += 1
 
     ## Split-merge move for session-level topics
-    def split_merge_session(self, random_allocation=False):
+    def split_merge_session(self, random_allocation=False, verbose=False):
         # Randomly choose two documents
         d, d_prime = np.random.choice(self.D, size=2, replace=False)
         # Propose a split or merge move according to the sampled values
@@ -556,11 +557,11 @@ class topic_model:
                     T_prop = np.zeros(2); T_prop[0] += np.sum(t_prop); T_prop[1] = np.sum(1-t_prop)
                     if self.command_level_topics:
                         S_prop = np.zeros((2,self.H))
-                        for doc in indices[t_prop]:
+                        for doc in indices[np.array(t_prop,dtype=bool)]:
                             Q = Counter(self.s[doc])
                             for h in Q:
                                 S_prop[0,h] += Q[h]
-                        for doc in indices[1-t_prop]:
+                        for doc in indices[np.logical_not(t_prop)]:
                             Q = Counter(self.s[doc])
                             for h in Q:
                                 S_prop[1,h] += Q[h]
@@ -569,7 +570,7 @@ class topic_model:
                         if self.secondary_topic:
                             M_ast_prop = np.zeros(2)
                             Z_prop = np.zeros(2)
-                        for doc in indices[t_prop]:
+                        for doc in indices[np.logical(t_prop, dtype=bool)]:
                             for j in self.w[doc]:
                                 Q = Counter(self.w[doc][j] if not self.secondary_topic else self.w[doc][j][self.z[doc][j] == 1])
                                 for v in Q:
@@ -577,7 +578,7 @@ class topic_model:
                                 if self.secondary_topic:
                                     M_ast_prop[0] += self.M[doc][j]
                                     Z_prop[0] += np.sum(self.z[doc][j])
-                        for doc in indices[1-t_prop]:
+                        for doc in indices[np.logical_not(t_prop)]:
                             for j in self.w[doc]:
                                 Q = Counter(self.w[doc][j] if not self.secondary_topic else self.w[doc][j][self.z[doc][j] == 1])
                                 for v in Q:
@@ -717,7 +718,7 @@ class topic_model:
                         T_prop[td_new] += 1
                         if self.command_level_topics:
                             for h in Sd:
-                                self.S[td_new,h] += Sd[h]
+                                S_prop[td_new,h] += Sd[h]
                         else:
                             for v in Wd:
                                 W_prop[td_new,v] += Wd[v]
@@ -728,7 +729,7 @@ class topic_model:
                         T_temp[td_new] += 1
                         if self.command_level_topics:
                             for h in Sd:
-                                self.S[td_new,h] += Sd[h]
+                                S_prop[td_new,h] += Sd[h]
                         else:
                             for v in Wd:
                                 W_temp[td_new,v] += Wd[v]
@@ -749,14 +750,16 @@ class topic_model:
                 if self.secondary_topic:
                     acceptance_ratio += np.sum(loggamma(self.alpha + Z_prop)) + np.sum(loggamma(self.alpha0 + M_ast_prop - Z_prop))
                     acceptance_ratio -= np.sum(loggamma(self.alpha + self.alpha0 + M_ast_prop))
-                    acceptance_ratio += np.sum(loggamma(self.alpha + self.Z[t_indices])) + np.sum(loggamma(self.alpha0 + self.M_star[t_indices] - self.Z[t_indices]))
-                    acceptance_ratio -= np.sum(loggamma(self.alpha + self.alpha0 + self.M_star[t_indices]))            
+                    acceptance_ratio -= np.sum(loggamma(self.alpha + self.Z[t_indices])) + np.sum(loggamma(self.alpha0 + self.M_star[t_indices] - self.Z[t_indices]))
+                    acceptance_ratio += np.sum(loggamma(self.alpha + self.alpha0 + self.M_star[t_indices]))            
             if split: 
                 acceptance_ratio -= probs_proposal
             else:
                 acceptance_ratio += probs_proposal
             # Accept / reject using Metropolis-Hastings
             accept = (-np.random.exponential(1) < acceptance_ratio)
+            if verbose:
+                print('\r', ['Merge', 'Split'][int(split)], 'move', ['rejected','accepted'][int(accept)], end='')
             # Update if move is accepted
             if accept:
                 if split:
@@ -776,7 +779,7 @@ class topic_model:
                         self.Z[t] = Z_prop[0]; self.Z[t_ast] = Z_prop[1]
 
     ## Split-merge move for session-level topics
-    def split_merge_command(self, random_allocation=False):
+    def split_merge_command(self, random_allocation=False, verbose=False):
         if not self.command_level_topics:
             raise TypeError('Command-level topics cannot be resampled if command_level_topics is not used.')
         indices_int = np.random.choice(self.N_cumsum[-1], size=2, replace=False)
@@ -818,12 +821,12 @@ class topic_model:
                 for doc in indices_d:
                     indices_s[doc] = np.random.choice(indices[doc], size=len(indices[doc]), replace=False)
                 # Proposals
-                W_prop = ((2,self.V))
+                W_prop = np.zeros((2,self.V), dtype=int)
+                s_prop = {}
+                S_prop = np.zeros((2,self.K))
+                if self.secondary_topic:
+                    M_ast_prop = np.zeros(2); Z_prop = np.zeros(2)
                 if random_allocation:
-                    s_prop = {}
-                    S_prop = np.zeros((2,self.K))
-                    if self.secondary_topic:
-                        M_ast_prop = np.zeros(2); Z_prop = np.zeros(2)
                     for doc in self.s:
                         allocation = np.random.choice(2,size=len(indices[doc]))
                         s_prop[doc] = allocation
@@ -844,6 +847,21 @@ class topic_model:
                                 Q = Counter(self.w[doc][command][self.z[doc][command] == 1] if self.secondary_topic else self.w[doc][command])
                                 for v in Q:
                                     W_prop[1,v] += Q[v]
+                else:
+                    S_prop[0,self.t[d]] += 1
+                    S_prop[1,self.t[d_prime]] += 1
+                    Wjd = Counter(self.w[d][j])
+                    for v in Wjd:
+                        W_prop[0,v] += Wjd[v]
+                    if self.secondary_topic:
+                        M_ast_prop[0] = self.M[d][j]
+                        Z_prop[0] = np.sum(self.z[d][j]) 
+                    Wjd = Counter(self.w[d_prime][j_prime])
+                    for v in Wjd:
+                        W_prop[1,v] += Wjd[v]
+                    if self.secondary_topic:
+                        M_ast_prop[1] = self.M[d_prime][j_prime]
+                        Z_prop[1] = np.sum(self.z[d_prime][j_prime]) 
             else:
                 # Merge move
                 indices = {} 
@@ -878,8 +896,6 @@ class topic_model:
             # Caclulate proposal probability
             if not random_allocation:
                 probs_proposal = 0
-                if split:
-                    s_prop = {}
                 for doc in indices_d:
                     td = self.t[doc]
                     if split:
@@ -942,28 +958,30 @@ class topic_model:
             if self.secondary_topic:
                 acceptance_ratio += np.sum(loggamma(self.alpha + Z_prop)) + np.sum(loggamma(self.alpha0 + M_ast_prop - Z_prop))
                 acceptance_ratio -= np.sum(loggamma(self.alpha + self.alpha0 + M_ast_prop))
-                acceptance_ratio += np.sum(loggamma(self.alpha + self.Z[s_indices])) + np.sum(loggamma(self.alpha0 + self.M_star[s_indices] - self.Z[s_indices]))
-                acceptance_ratio -= np.sum(loggamma(self.alpha + self.alpha0 + self.M_star[s_indices]))
+                acceptance_ratio -= np.sum(loggamma(self.alpha + self.Z[s_indices])) + np.sum(loggamma(self.alpha0 + self.M_star[s_indices] - self.Z[s_indices]))
+                acceptance_ratio += np.sum(loggamma(self.alpha + self.alpha0 + self.M_star[s_indices]))
             if split:
                 acceptance_ratio -= probs_proposal
             else:
                 acceptance_ratio += probs_proposal
             # Accept / reject using Metropolis-Hastings
             accept = (-np.random.exponential(1) < acceptance_ratio)
+            if verbose:
+                print('\r', ['Merge', 'Split'][int(split)], 'move', ['rejected','accepted'][int(accept)], end='')
             # Update if move is accepted
             if accept:
                 if split:
                     self.s[d][j] = s
                     self.s[d_prime][j_prime] = s_ast
                     for doc in indices_d: 
-                        self.s[indices_s[doc] == 0] = s
-                        self.s[indices_s[doc] == 1] = s_ast
+                        self.s[doc][indices_s[doc][np.logical_not(s_prop[doc])]] = s
+                        self.s[doc][indices_s[doc][np.array(s_prop[doc], dtype=bool)]] = s_ast
                 else:
                     self.s[d][j] = s
                     self.s[d_prime][j_prime] = s
                     for doc in indices:
-                        self.s[indices[doc]] = s
-                self.S[s] = S_prop[0]; self.S[s_ast] = S_prop[1]
+                        self.s[doc][indices[doc]] = s
+                self.S[:,s] = S_prop[0]; self.S[:,s_ast] = S_prop[1]
                 self.W[s + (1 if self.secondary_topic else 0)] = W_prop[0]; self.W[s_ast + (1 if self.secondary_topic else 0)] = W_prop[1] 
                 if self.secondary_topic:
                     self.M_star[s] = M_ast_prop[0]; self.M_star[s_ast] = M_ast_prop[1]
