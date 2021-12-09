@@ -111,34 +111,31 @@ class topic_model:
         if not isinstance(fixed_H, bool):
             return TypeError('fixed_H must be True or False.')
         self.fixed_H = fixed_H
-        # Session-level topics
+        # Initialise dictionaries
         self.t = np.zeros(self.D, dtype=int)
+        if self.command_level_topics:
+            self.s = {}
+        if self.secondary_topic:
+            self.z = {}
+
+    ## Initialise counts given initial values of t, s and z
+    def init_counts(self):
+        # Session-level topics
         self.T = np.zeros(self.K, dtype=int)
         # Command-level topics
         if self.command_level_topics:
-            self.s = {}
-            for d in self.w:
-                self.s[d] = np.zeros(len(self.w[d]), dtype=int)
             self.S = np.zeros((self.K, self.H), dtype=int)
             self.W = np.zeros(shape=(self.H + (1 if self.secondary_topic else 0), self.V), dtype=int)
         else:
             self.W = np.zeros(shape=(self.K + (1 if self.secondary_topic else 0), self.V), dtype=int)             
         # Primary-secondary topic indicators
         if self.secondary_topic:
-            self.z = {}
-            for d in self.w:
-                self.z[d] = {} 
-                for j in self.w[d]:
-                    self.z[d][j] = np.zeros(len(self.w[d][j]), dtype=int)
             if self.command_level_topics:
                 self.M_star = np.zeros(shape=self.H, dtype=int)
                 self.Z = np.zeros(shape=self.H, dtype=int)
             else:
                 self.M_star = np.zeros(shape=self.K, dtype=int)
                 self.Z = np.zeros(shape=self.K, dtype=int)
-
-    ## Initialise counts given initial values of t, s and z
-    def init_counts(self):
         # Initialise quantities 
         Q = Counter(self.t)
         for topic in Q:
@@ -185,12 +182,9 @@ class topic_model:
     ## Initializes chain at given values of t, s and z
     def custom_init(self, t, s=None, z=None):
         if isinstance(t, list) or isinstance(t, np.ndarray):
-            if len(t) != self.K:
-                raise TypeError('The initial value for t should be a K-dimensional list or np.ndarray.')
-            if isinstance(t, list):
-                self.t = np.array(t)
-            else:
-                self.t = t
+            if len(t) != self.D:
+                raise TypeError('The initial value for t should be a D-dimensional list or np.ndarray.')
+            self.t = np.array(t, dtype=int)
         else:
             raise TypeError('The initial value for t should be a K-dimensional list or np.ndarray.')
         if s is not None:
@@ -212,16 +206,14 @@ class topic_model:
 
     ## Initializes uniformly at random
     def random_init(self):
-        ## Random initialisation
+        # Random initialisation
+        self.t = np.random.choice(self.K, size=self.D)
         for d in range(self.D):
-            self.t[d] = np.random.choice(self.K)
             if self.command_level_topics:
-                for j in self.w[d]:
-                    self.s[d][j] = np.random.choice(self.H)
+                self.s[d] = self.s[d] = np.random.choice(self.H, size=len(self.w[d]))
             if self.secondary_topic:
                 for j in self.w[d]:
-                    for i in range(self.M[d][j]):
-                        self.z[d][j][i] = np.random.choice(2)
+                    self.z[d][j] = np.random.choice(2, size=self.M[d][j])
         ## Initialise counts
         self.init_counts()
 
@@ -578,7 +570,7 @@ class topic_model:
                             M_ast_prop = np.zeros(2)
                             Z_prop = np.zeros(2)
                         for doc in indices[t_prop]:
-                            for j in self.w[d]:
+                            for j in self.w[doc]:
                                 Q = Counter(self.w[doc][j] if not self.secondary_topic else self.w[doc][j][self.z[doc][j] == 1])
                                 for v in Q:
                                     W_prop[0,v] += Q[v]
@@ -941,7 +933,7 @@ class topic_model:
                                     M_ast_temp[sjd_new] += self.M[doc][command]
                                     Z_temp[sjd_new] += Zjd
             else:
-                probs_proposal = len(indices) * np.log(2)
+                probs_proposal = - len(indices) * np.log(2)
             # Calculate the Metropolis-Hastings acceptance ratio
             s_indices = np.array([s,s_ast])
             acceptance_ratio = np.sum(loggamma(self.gamma + S_prop)) - np.sum(loggamma(self.gamma + self.S[:,s_indices]))
