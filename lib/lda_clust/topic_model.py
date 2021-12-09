@@ -529,8 +529,8 @@ class topic_model:
             self.W[(topic+1)*z_old,v] -= 1
             # Calculate allocation probabilities
             probs = np.zeros(2)
-            probs[0] = np.log(self.alpha + self.Z[topic]) + np.log(self.tau + self.W[topic+1,v]) - np.log(np.sum(self.tau + self.W[topic+1]))
-            probs[1] = np.log(self.alpha0 + self.M_star[topic] - 1 - self.Z[topic]) + np.log(self.tau + self.W[0,v]) - np.log(np.sum(self.tau + self.W[0]))
+            probs[1] = np.log(self.alpha + self.Z[topic]) + np.log(self.tau + self.W[topic+1,v]) - np.log(np.sum(self.tau + self.W[topic+1]))
+            probs[0] = np.log(self.alpha0 + self.M_star[topic] - 1 - self.Z[topic]) + np.log(self.tau + self.W[0,v]) - np.log(np.sum(self.tau + self.W[0]))
             probs = np.exp(probs - logsumexp(probs))
             # Resample z
             z_new = np.random.choice(range(2), p=probs)
