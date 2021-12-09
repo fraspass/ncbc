@@ -925,3 +925,33 @@ class topic_model:
                 if self.secondary_topic:
                     self.M_star[s] = M_ast_prop[0]; self.M_star[s_ast] = M_ast_prop[1]
                     self.Z[s] = Z_prop[0]; self.Z[s_ast] = Z_prop[1]
+
+    ## Runs MCMC chain
+    def MCMC(self, iterations=100, verbose=True):
+        # Moves
+        moves = ['t', 'split_merge_session']
+        moves_probs = [5, 1]
+        if self.command_level_topics:
+            moves += ['s', 'split_merge_command']
+            moves_probs += [10, 2]
+        if self.secondary_topic:
+            moves += ['z']
+            moves_probs += [10]
+        moves_probs /= np.sum(moves_probs)
+        for it in range(iterations):
+            # Print progression
+            if verbose:
+                print('\rProgression: ', str(it+1), ' / ', str(iterations), sep='', end='')
+            # Sample move
+            move = np.random.choice(moves, p=moves_probs)
+            # Do move
+            if move == 't':
+                self.resample_session_topics()
+            elif move == 's':
+                self.resample_command_topics()
+            elif move == 'z':
+                self.resample_indicators()
+            elif move == 'split_merge_session':
+                self.split_merge_session()
+            else:
+                self.split_merge_command()

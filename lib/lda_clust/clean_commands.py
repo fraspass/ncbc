@@ -37,7 +37,7 @@ def clean_commands(dat, no_below=2, no_above=1.1):
     dictionary = Dictionary(commands_list) 
     dictionary.filter_extremes(no_below, no_above)
     # Replace rare commands by rarecommand
-    dictionary.id2token[-1] = 'rarecommand' ### Add a 'rarecommand' token to the corpus and assign a unique value to it -1
+    dictionary.id2token[-1] = 'rarecommand' # Add a 'rarecommand' token to the corpus and assign a unique value to it -1
     ''' -1 value indicates rareword, so when a token appears in sessions
     that is not in final dictionary (after filtering) it substitutes the unique value -1 to this token '''
     dictionary.token2id['rarecommand'] = -1 
@@ -46,7 +46,7 @@ def clean_commands(dat, no_below=2, no_above=1.1):
         sessions_token_list.append([])
         commands_token_list = []
         for command in session:
-            idxs = dictionary.doc2idx(command) ### Gives to tokens of command the unique values/ids assigned
+            idxs = dictionary.doc2idx(command) # Gives to tokens of command the unique values/ids assigned
             commands_token_list.append(' '.join([dictionary[idx] for idx in idxs]))
         sessions_token_list[-1] += commands_token_list
     return sessions_token_list, dictionary
