@@ -736,7 +736,7 @@ class topic_model:
                                 M_ast_temp[td_new] += np.sum(self.M[doc])
                                 Z_temp[td_new] += Zd
             else:
-                probs_proposal = len(indices) * np.log(2)
+                probs_proposal = - len(indices) * np.log(2)
             # Calculate the Metropolis-Hastings acceptance ratio
             t_indices = np.array([t,t_ast])
             acceptance_ratio = np.sum(loggamma(self.gamma + T_prop)) - np.sum(loggamma(self.gamma + self.T[t_indices]))
