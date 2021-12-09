@@ -654,10 +654,10 @@ class topic_model:
                         M_ast_temp = np.zeros(2); Z_temp = np.zeros(2)
                         for j in self.w[d]:
                             M_ast_temp[0] += self.M[d][j]
-                            Z_temp[0] += np.sum(self.w[d][j])
+                            Z_temp[0] += np.sum(self.z[d][j])
                         for j in self.w[d_prime]:
                             M_ast_temp[1] += self.M[d_prime][j]
-                            Z_temp[1] += np.sum(self.w[d_prime][j])
+                            Z_temp[1] += np.sum(self.z[d_prime][j])
             # Caclulate proposal probability
             if not random_allocation:
                 probs_proposal = 0
@@ -880,9 +880,9 @@ class topic_model:
                     Z_prop = np.zeros(2); Z_prop[0] = self.Z[s] + self.Z[s_ast]
                     M_ast_temp = np.zeros(2); Z_temp = np.zeros(2)
                     M_ast_temp[0] += self.M[d][j]
-                    Z_temp[0] += np.sum(self.w[d][j])
+                    Z_temp[0] += np.sum(self.z[d][j])
                     M_ast_temp[1] += self.M[d_prime][j_prime]
-                    Z_temp[1] += np.sum(self.w[d_prime][j_prime])
+                    Z_temp[1] += np.sum(self.z[d_prime][j_prime])
             # Caclulate proposal probability
             if not random_allocation:
                 probs_proposal = 0
@@ -917,29 +917,29 @@ class topic_model:
                                 probs += np.sum(np.log(np.add.outer(self.alpha + Z_temp, np.arange(Zjd))), axis=1)
                                 probs += np.sum(np.log(np.add.outer(self.alpha0 + M_ast_temp - Z_temp, np.arange(self.M[doc][command] - Zjd))), axis=1)
                                 probs -= np.sum(np.log(np.add.outer(self.alpha0 + self.alpha + M_ast_temp, np.arange(self.M[doc][command]))), axis=1)                                         
-                    # Transform the probabilities
-                    probs = np.exp(probs - logsumexp(probs))
-                    # Resample
-                    sjd_new = np.random.choice(2, p=probs)
-                    if split:
-                        s_prop[doc] += [sjd_new]
-                    # Calculate Q's for the MH ratio
-                    probs_proposal += np.log(probs[sjd_new])
-                    if split:
-                        # Update counts
-                        S_prop[sjd_new,td] += 1
-                        for v in Wjd:
-                            W_prop[sjd_new,v] += Wjd[v]
-                        if self.secondary_topic:
-                            M_ast_prop[sjd_new] += self.M[doc][command]
-                            Z_prop[sjd_new] += Zjd
-                    else:
-                        S_temp[sjd_new,td] += 1
-                        for v in Wjd:
-                            W_temp[sjd_new,v] += Wjd[v]
+                        # Transform the probabilities
+                        probs = np.exp(probs - logsumexp(probs))
+                        # Resample
+                        sjd_new = np.random.choice(2, p=probs)
+                        if split:
+                            s_prop[doc] += [sjd_new]
+                        # Calculate Q's for the MH ratio
+                        probs_proposal += np.log(probs[sjd_new])
+                        if split:
+                            # Update counts
+                            S_prop[sjd_new,td] += 1
+                            for v in Wjd:
+                                W_prop[sjd_new,v] += Wjd[v]
                             if self.secondary_topic:
-                                M_ast_temp[sjd_new] += self.M[doc][command]
-                                Z_temp[sjd_new] += Zjd
+                                M_ast_prop[sjd_new] += self.M[doc][command]
+                                Z_prop[sjd_new] += Zjd
+                        else:
+                            S_temp[sjd_new,td] += 1
+                            for v in Wjd:
+                                W_temp[sjd_new,v] += Wjd[v]
+                                if self.secondary_topic:
+                                    M_ast_temp[sjd_new] += self.M[doc][command]
+                                    Z_temp[sjd_new] += Zjd
             else:
                 probs_proposal = len(indices) * np.log(2)
             # Calculate the Metropolis-Hastings acceptance ratio
