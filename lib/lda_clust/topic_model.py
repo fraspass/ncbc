@@ -8,6 +8,7 @@ from scipy.sparse import coo_matrix
 from scipy.sparse.linalg import svds
 from numpy.linalg import svd
 from sklearn.cluster import KMeans
+from .utils import logB
 
 class topic_model:
     
@@ -178,7 +179,7 @@ class topic_model:
                         Wjd = Counter(self.w[doc][j])
                         for v in Wjd:
                             self.W[td, v] += Wjd[v]
-    
+
     ## Initializes chain at given values of t, s and z
     def custom_init(self, t, s=None, z=None):
         if isinstance(t, list) or isinstance(t, np.ndarray):
@@ -217,6 +218,19 @@ class topic_model:
                     self.z[d][j] = np.random.choice(2, size=self.M[d][j])
         ## Initialise counts
         self.init_counts()
+
+    ## Calculate marginal posterior up to normalising constants
+    def marginal_loglikelihood(self):
+        ll = 0
+        ll += logB(self.gamma + self.T)
+        if self.command_level_topics:
+            ll += np.sum([logB(self.eta + self.S[k]) for k in range(self.K)])
+            ll += np.sum([logB(self.tau + self.W[k]) for k in range(self.H + (1 if self.secondary_topic else 0))])
+        else:
+            ll += np.sum([logB(self.eta + self.W[k]) for k in range(self.K + (1 if self.secondary_topic else 0))])
+        if self.secondary_topic:
+            ll += np.sum([logB(np.array([self.alpha + self.Z[k], self.alpha0 + self.M_star[k] - self.Z[k]])) for k in range(self.H if self.command_level_topics else self.K)])
+        return ll    
 
     ## Initializes chain using gensim   
     def gensim_init(self, chunksize = 2000, passes = 100, iterations = 1000, eval_every= None):
@@ -526,7 +540,7 @@ class topic_model:
             self.W[(topic+1)*z_new,v] += 1
 
     ## Split-merge move for session-level topics
-    def split_merge_session(self, random_allocation=False, verbose=False):
+    def split_merge_session(self, random_allocation=False):
         # Randomly choose two documents
         d, d_prime = np.random.choice(self.D, size=2, replace=False)
         # Propose a split or merge move according to the sampled values
@@ -758,8 +772,6 @@ class topic_model:
                 acceptance_ratio += probs_proposal
             # Accept / reject using Metropolis-Hastings
             accept = (-np.random.exponential(1) < acceptance_ratio)
-            if verbose:
-                print('\r', ['Merge', 'Split'][int(split)], 'move', ['rejected','accepted'][int(accept)], end='')
             # Update if move is accepted
             if accept:
                 if split:
@@ -779,7 +791,7 @@ class topic_model:
                         self.Z[t] = Z_prop[0]; self.Z[t_ast] = Z_prop[1]
 
     ## Split-merge move for session-level topics
-    def split_merge_command(self, random_allocation=False, verbose=False):
+    def split_merge_command(self, random_allocation=False):
         if not self.command_level_topics:
             raise TypeError('Command-level topics cannot be resampled if command_level_topics is not used.')
         indices_int = np.random.choice(self.N_cumsum[-1], size=2, replace=False)
@@ -966,8 +978,6 @@ class topic_model:
                 acceptance_ratio += probs_proposal
             # Accept / reject using Metropolis-Hastings
             accept = (-np.random.exponential(1) < acceptance_ratio)
-            if verbose:
-                print('\r', ['Merge', 'Split'][int(split)], 'move', ['rejected','accepted'][int(accept)], end='')
             # Update if move is accepted
             if accept:
                 if split:
@@ -988,7 +998,7 @@ class topic_model:
                     self.Z[s] = Z_prop[0]; self.Z[s_ast] = Z_prop[1]
 
     ## Runs MCMC chain
-    def MCMC(self, iterations=100, verbose=True):
+    def MCMC(self, iterations, verbose=True):
         # Moves
         moves = ['t', 'split_merge_session']
         moves_probs = [5, 1]
