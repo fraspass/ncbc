@@ -2,4 +2,3 @@
 .DS_Store
 */.DS_Store
 notebooks/.ipynb_checkpoints/*
-notebooks/test_library.ipynb
