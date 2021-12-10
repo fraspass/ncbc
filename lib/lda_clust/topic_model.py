@@ -1,6 +1,8 @@
 #! /usr/bin/env python3
+import sys
 import numpy as np
 from collections import Counter
+from scipy.sparse.construct import random
 from scipy.special import logsumexp, loggamma
 from gensim.models import LdaModel
 from gensim.corpora import Dictionary
@@ -9,6 +11,7 @@ from scipy.sparse.linalg import svds
 from numpy.linalg import svd
 from sklearn.cluster import KMeans
 from .utils import logB
+from IPython.display import display, clear_output
 
 class topic_model:
     
@@ -54,10 +57,11 @@ class topic_model:
         else:
             self.V = 0
             for d in W:
-                for i in range(self.N[d]):
-                    v = self.w[d][i]
-                    if v > self.V:
-                        self.V = v
+                for j in range(self.N[d]):
+                    for i in range(self.M[d][j]):
+                        v = self.w[d][j][i]
+                        if v > self.V:
+                            self.V = v
             self.V += 1
         # Secondary topics
         if not isinstance(secondary_topic, bool):
@@ -118,6 +122,19 @@ class topic_model:
             self.s = {}
         if self.secondary_topic:
             self.z = {}
+
+    ## Calculate marginal posterior up to normalising constants
+    def marginal_loglikelihood(self):
+        ll = 0
+        ll += logB(self.gamma + self.T)
+        if self.command_level_topics:
+            ll += np.sum([logB(self.eta + self.S[k]) for k in range(self.K)])
+            ll += np.sum([logB(self.tau + self.W[h]) for h in range(self.H + (1 if self.secondary_topic else 0))])
+        else:
+            ll += np.sum([logB(self.eta + self.W[k]) for k in range(self.K + (1 if self.secondary_topic else 0))])
+        if self.secondary_topic:
+            ll += np.sum([logB(np.array([self.alpha + self.Z[k], self.alpha0 + self.M_star[k] - self.Z[k]])) for k in range(self.H if self.command_level_topics else self.K)])
+        return ll 
 
     ## Initialise counts given initial values of t, s and z
     def init_counts(self):
@@ -217,23 +234,10 @@ class topic_model:
                 for j in self.w[d]:
                     self.z[d][j] = np.random.choice(2, size=self.M[d][j])
         ## Initialise counts
-        self.init_counts()
-
-    ## Calculate marginal posterior up to normalising constants
-    def marginal_loglikelihood(self):
-        ll = 0
-        ll += logB(self.gamma + self.T)
-        if self.command_level_topics:
-            ll += np.sum([logB(self.eta + self.S[k]) for k in range(self.K)])
-            ll += np.sum([logB(self.tau + self.W[k]) for k in range(self.H + (1 if self.secondary_topic else 0))])
-        else:
-            ll += np.sum([logB(self.eta + self.W[k]) for k in range(self.K + (1 if self.secondary_topic else 0))])
-        if self.secondary_topic:
-            ll += np.sum([logB(np.array([self.alpha + self.Z[k], self.alpha0 + self.M_star[k] - self.Z[k]])) for k in range(self.H if self.command_level_topics else self.K)])
-        return ll    
+        self.init_counts()   
 
     ## Initializes chain using gensim   
-    def gensim_init(self, chunksize = 2000, passes = 100, iterations = 1000, eval_every= None):
+    def gensim_init(self, chunksize=2000, passes=100, iterations=1000, eval_every=None):
         # Convert words into strings (gensim requirement)
         docs = []
         for d in self.w:
@@ -303,8 +307,9 @@ class topic_model:
                             primary_t = int(Counter(topic_allocation[d,j][topic_allocation[d,j] != secondary_t]).most_common(1)[0][0])
                             self.s[d][j] = primary_t - (1 if primary_t > secondary_t else 0)
                         else:
-                            self.s[d][j] = np.random.choice(self.H)     
-                    self.z[d][j] = np.array([int(np.argmax([topic_term[secondary_t,v], topic_term[primary_t,v]])) for v in self.w[d][j]])
+                            self.s[d][j] = np.random.choice(self.H)
+                    self.z[d][j] = np.array([int(np.argmax([topic_term[secondary_t,v], np.sum(np.delete(topic_term[:,v],secondary_t))])) for v in self.w[d][j]])  
+                    ## self.z[d][j] = np.array([int(np.argmax([topic_term[secondary_t,v], topic_term[primary_t,v]])) for v in self.w[d][j]])
         # If command-level topics are used, repeat gensim
         if self.command_level_topics:
             # Convert words (command-level topics) into strings (gensim requirement)
@@ -331,11 +336,22 @@ class topic_model:
         self.init_counts()
 
     ## Initializes chain using spectral clustering  
-    def spectral_init(self):
-        if self.secondary_topic:
-            raise TypeError('Spectral clustering is only implemented for initialisation when secondary topics are not used.')
-        if self.command_level_topics and self.K > self.H:
-            raise ValueError('K must be larger than H for initialising with spectral clustering.')
+    def spectral_init(self, K=None, H=None):
+        # Check if the provided value for K is appropriate
+        if K is not None:
+            if not isinstance(K, int) or K < 1:
+                raise ValueError('K must be an integer value larger or equal to 1.') 
+        else:
+            K = np.copy(self.K)
+        # Check if the provided value for H is appropriate
+        if self.command_level_topics:
+            if H is not None:
+                if not isinstance(H, int) or (self.command_level_topics and H < 2):
+                    raise ValueError('H must be an integer value larger or equal to 2 if command-level topics are used.') 
+            else:
+                H = np.copy(self.H)
+            if K > H:
+                raise ValueError('K must be larger than H for initialising with spectral clustering.')
         # Build co-occurrence matrix
         cooccurrence_matrix = {}
         for d in self.w:
@@ -356,8 +372,8 @@ class topic_model:
         # Co-occurrence matrix
         cooccurrence_matrix = coo_matrix((vals, (rows, cols)), shape=(self.N_cumsum[-1] if self.command_level_topics else self.D, self.V))
 		## Spectral decomposition of A
-        U, S, _ = svds(cooccurrence_matrix.asfptype(), k=self.H if self.command_level_topics else self.K)
-        kmod = KMeans(n_clusters=self.H if self.command_level_topics else self.K, random_state=0).fit(U[:,::-1] * (S[::-1] ** .5))
+        U, S, _ = svds(cooccurrence_matrix.asfptype(), k=H if self.command_level_topics else K)
+        kmod = KMeans(n_clusters=H if self.command_level_topics else K, random_state=0).fit(U[:,::-1] * (S[::-1] ** .5))
         if not self.command_level_topics:
             self.t = kmod.labels_
         else:
@@ -373,16 +389,25 @@ class topic_model:
                 vals += list(cooccurrence_matrix[key].values())
                 rows += [key] * len(cooccurrence_matrix[key])
                 cols += list(cooccurrence_matrix[key].keys())
-            # Co-occurrence matrix
-            cooccurrence_matrix = coo_matrix((vals, (rows, cols)), shape=(self.D, self.H))
-            ## Spectral decomposition
-            if self.K < self.H:
-                U, S, _ = svds(cooccurrence_matrix.asfptype(), k=self.K)
-                kmod = KMeans(n_clusters=self.K, random_state=0).fit(U[:,::-1] * (S[::-1] ** .5))
+            if K > 1:
+                # Co-occurrence matrix
+                cooccurrence_matrix = coo_matrix((vals, (rows, cols)), shape=(self.D, self.H))
+                ## Spectral decomposition
+                if K < H:
+                    U, S, _ = svds(cooccurrence_matrix.asfptype(), k=K)
+                    kmod = KMeans(n_clusters=K, random_state=0).fit(U[:,::-1] * (S[::-1] ** .5))
+                else:
+                    U, S, _ = svd(cooccurrence_matrix.todense(), full_matrices=False)
+                    kmod = KMeans(n_clusters=K, random_state=0).fit(np.array(U)[:,::-1] * (S[::-1] ** .5))
+                self.t = kmod.labels_
             else:
-                U, S, _ = svd(cooccurrence_matrix.todense(), full_matrices=False)
-                kmod = KMeans(n_clusters=self.K, random_state=0).fit(np.array(U)[:,::-1] * (S[::-1] ** .5))
-            self.t = kmod.labels_
+                self.t = np.zeros(self.D, dtype=int)
+        # Initialise all z's at random
+        self.z = {}
+        for d in self.w:
+            self.z[d] = {}
+            for j in self.w[d]:
+                self.z[d][j] = np.random.choice(2,size=self.M[d][j],p=[0.1,0.9])
         # Initialise counts
         self.init_counts()     
 
@@ -492,18 +517,18 @@ class topic_model:
                 for v in Wd:
                     probs += np.sum(np.log(np.add.outer(self.tau + self.W[:,v], np.arange(Wd[v]))), axis=1)
                 probs -= np.sum(np.log(np.add.outer(np.sum(self.tau + self.W, axis=1), np.arange(np.sum(list(Wd.values()))))), axis=1)
-        # Transform the probabilities
-        probs = np.exp(probs - logsumexp(probs))
-        # Resample command-level topic
-        s_new = np.random.choice(self.H, p=probs)
-        self.s[d][j] = s_new
-        # Update counts
-        self.S[td,s_new] += 1
-        for v in Wd:
-            self.W[s_new + (1 if self.secondary_topic else 0),v] += Wd[v]
-        if self.secondary_topic:
-            self.M_star[s_new] += self.M[d][j]
-            self.Z[s_new] += Zdj
+            # Transform the probabilities
+            probs = np.exp(probs - logsumexp(probs))
+            # Resample command-level topic
+            s_new = np.random.choice(self.H, p=probs)
+            self.s[d][j] = s_new
+            # Update counts
+            self.S[td,s_new] += 1
+            for v in Wd:
+                self.W[s_new + (1 if self.secondary_topic else 0),v] += Wd[v]
+            if self.secondary_topic:
+                self.M_star[s_new] += self.M[d][j]
+                self.Z[s_new] += Zdj
                         
     ## Resample indicator for primary-secondary topic
     def resample_indicators(self, size=1, indices=None):
@@ -566,11 +591,38 @@ class topic_model:
                 # Split move
                 indices = np.where(self.t == t)[0]
                 indices = indices[np.logical_and(indices != d, indices != d_prime)]
+                T_prop = np.ones(2)
+                if self.command_level_topics:
+                    S_prop = np.zeros((2,self.H))
+                    Q = Counter(self.s[d])
+                    for h in Q:
+                        S_prop[0,h] = Q[h]
+                    Q = Counter(self.s[d_prime]) 
+                    for h in Q:
+                        S_prop[1,h] = Q[h]
+                else:
+                    W_prop = np.zeros((2,self.V))
+                    if self.secondary_topic:
+                        M_ast_prop = np.zeros(2)
+                        Z_prop = np.zeros(2)
+                    for j in self.w[d]:
+                        Q = Counter(self.w[d][j] if not self.secondary_topic else self.w[d][j][self.z[d][j] == 1])
+                        for v in Q:
+                            W_prop[0,v] += Q[v]
+                        if self.secondary_topic:
+                            M_ast_prop[0] += self.M[d][j]
+                            Z_prop[0] += np.sum(self.z[d][j])
+                    for j in self.w[d_prime]:
+                        Q = Counter(self.w[d_prime][j] if not self.secondary_topic else self.w[d_prime][j][self.z[d_prime][j] == 1])
+                        for v in Q:
+                            W_prop[1,v] += Q[v]
+                        if self.secondary_topic:
+                            M_ast_prop[1] += self.M[d_prime][j]
+                            Z_prop[1] += np.sum(self.z[d_prime][j])
                 if random_allocation:
                     t_prop = np.random.choice(2,size=len(indices))
-                    T_prop = np.zeros(2); T_prop[0] += np.sum(t_prop); T_prop[1] = np.sum(1-t_prop)
+                    T_prop[0] += np.sum(t_prop); T_prop[1] = np.sum(1-t_prop)
                     if self.command_level_topics:
-                        S_prop = np.zeros((2,self.H))
                         for doc in indices[np.array(t_prop,dtype=bool)]:
                             Q = Counter(self.s[doc])
                             for h in Q:
@@ -580,10 +632,6 @@ class topic_model:
                             for h in Q:
                                 S_prop[1,h] += Q[h]
                     else:
-                        W_prop = np.zeros((2,self.V))
-                        if self.secondary_topic:
-                            M_ast_prop = np.zeros(2)
-                            Z_prop = np.zeros(2)
                         for doc in indices[np.logical(t_prop, dtype=bool)]:
                             for j in self.w[doc]:
                                 Q = Counter(self.w[doc][j] if not self.secondary_topic else self.w[doc][j][self.z[doc][j] == 1])
@@ -599,36 +647,7 @@ class topic_model:
                                     W_prop[1,v] += Q[v]
                                 if self.secondary_topic:
                                     M_ast_prop[1] += self.M[doc][j]
-                                    Z_prop[1] += np.sum(self.z[doc][j])                    
-                else:
-                    T_prop = np.ones(2)
-                    if self.command_level_topics:
-                        S_prop = np.zeros((2,self.H))
-                        Q = Counter(self.s[d])
-                        for h in Q:
-                            S_prop[0,h] = Q[h]
-                        Q = Counter(self.s[d_prime]) 
-                        for h in Q:
-                            S_prop[1,h] = Q[h]
-                    else:
-                        W_prop = np.zeros((2,self.V))
-                        if self.secondary_topic:
-                            M_ast_prop = np.zeros(2)
-                            Z_prop = np.zeros(2)
-                        for j in self.w[d]:
-                            Q = Counter(self.w[d][j] if not self.secondary_topic else self.w[d][j][self.z[d][j] == 1])
-                            for v in Q:
-                                W_prop[0,v] += Q[v]
-                            if self.secondary_topic:
-                                M_ast_prop[0] += self.M[d][j]
-                                Z_prop[0] += np.sum(self.z[d][j])
-                        for j in self.w[d_prime]:
-                            Q = Counter(self.w[d_prime][j] if not self.secondary_topic else self.w[d_prime][j][self.z[d_prime][j] == 1])
-                            for v in Q:
-                                W_prop[1,v] += Q[v]
-                            if self.secondary_topic:
-                                M_ast_prop[1] += self.M[d_prime][j]
-                                Z_prop[1] += np.sum(self.z[d_prime][j])
+                                    Z_prop[1] += np.sum(self.z[doc][j])
             else:
                 # Merge move
                 indices = np.where(np.logical_or(self.t == t, self.t == t_ast))[0]
@@ -751,7 +770,7 @@ class topic_model:
                                 M_ast_temp[td_new] += np.sum(self.M[doc])
                                 Z_temp[td_new] += Zd
             else:
-                probs_proposal = - len(indices) * np.log(2)
+                probs_proposal = -len(indices) * np.log(2)
             # Calculate the Metropolis-Hastings acceptance ratio
             t_indices = np.array([t,t_ast])
             acceptance_ratio = np.sum(loggamma(self.gamma + T_prop)) - np.sum(loggamma(self.gamma + self.T[t_indices]))
@@ -766,7 +785,7 @@ class topic_model:
                     acceptance_ratio -= np.sum(loggamma(self.alpha + self.alpha0 + M_ast_prop))
                     acceptance_ratio -= np.sum(loggamma(self.alpha + self.Z[t_indices])) + np.sum(loggamma(self.alpha0 + self.M_star[t_indices] - self.Z[t_indices]))
                     acceptance_ratio += np.sum(loggamma(self.alpha + self.alpha0 + self.M_star[t_indices]))            
-            if split: 
+            if split:
                 acceptance_ratio -= probs_proposal
             else:
                 acceptance_ratio += probs_proposal
@@ -824,56 +843,65 @@ class topic_model:
                 # Split move
                 indices = {} 
                 for doc in self.s:
-                    indices[doc] = np.where(self.s[doc] == s)[0]
+                    if np.sum(self.s[doc] == s) > 0:
+                        indices[doc] = np.where(self.s[doc] == s)[0]
                 indices[d] = indices[d][indices[d] != j]
+                if len(indices[d]) == 0:
+                    del indices[d]
                 indices[d_prime] = indices[d_prime][indices[d_prime] != j_prime]
+                if len(indices[d_prime]) == 0:
+                    del indices[d_prime]
                 # Shuffle indices
                 indices_d = np.random.choice(list(indices.keys()), size=len(indices), replace=False)
                 indices_s = {}
                 for doc in indices_d:
                     indices_s[doc] = np.random.choice(indices[doc], size=len(indices[doc]), replace=False)
                 # Proposals
-                W_prop = np.zeros((2,self.V), dtype=int)
                 s_prop = {}
+                W_prop = np.zeros((2,self.V), dtype=int)
                 S_prop = np.zeros((2,self.K))
                 if self.secondary_topic:
-                    M_ast_prop = np.zeros(2); Z_prop = np.zeros(2)
+                    M_ast_prop = np.zeros(2)
+                    Z_prop = np.zeros(2)
+                # Add starting commands
+                S_prop[0,self.t[d]] += 1
+                S_prop[1,self.t[d_prime]] += 1
+                # Add words
+                Wjd = Counter(self.w[d][j])
+                for v in Wjd:
+                    W_prop[0,v] += Wjd[v]
+                if self.secondary_topic:
+                    M_ast_prop[0] = self.M[d][j]
+                    Z_prop[0] = np.sum(self.z[d][j]) 
+                Wjd = Counter(self.w[d_prime][j_prime])
+                for v in Wjd:
+                    W_prop[1,v] += Wjd[v]
+                if self.secondary_topic:
+                    M_ast_prop[1] = self.M[d_prime][j_prime]
+                    Z_prop[1] = np.sum(self.z[d_prime][j_prime]) 
+                # If the allocation is random, the entire vector can be calculated
                 if random_allocation:
-                    for doc in self.s:
-                        allocation = np.random.choice(2,size=len(indices[doc]))
+                    for doc in indices_d:
+                        allocation = np.random.choice(2,size=len(indices_s[doc]))
                         s_prop[doc] = allocation
-                        S_prop[0,self.t[doc]] += np.sum(allocation)
-                        S_prop[1,self.t[doc]] += np.sum(1-allocation)
-                        for command in self.w[d]:
-                            if allocation[command] == 1:
+                        S_prop[0,self.t[doc]] += np.sum(1-allocation)
+                        S_prop[1,self.t[doc]] += np.sum(allocation)
+                        for command in range(len(indices_s[doc])):
+                            inds = indices_s[doc][command]
+                            if allocation[command] == 0:
                                 if self.secondary_topic:    
-                                    M_ast_prop[0] += self.M[doc][command] 
-                                    Z_prop[0] += np.sum(self.z[doc][command])
-                                Q = Counter(self.w[doc][command][self.z[doc][command] == 1] if self.secondary_topic else self.w[doc][command])
+                                    M_ast_prop[0] += self.M[doc][inds] 
+                                    Z_prop[0] += np.sum(self.z[doc][inds])
+                                Q = Counter(self.w[doc][inds][self.z[doc][inds] == 1] if self.secondary_topic else self.w[doc][inds])
                                 for v in Q:
                                     W_prop[0,v] += Q[v]
                             else:
                                 if self.secondary_topic: 
-                                    M_ast_prop[1] += self.M[doc][command] 
-                                    Z_prop[1] += np.sum(self.z[doc][command])
-                                Q = Counter(self.w[doc][command][self.z[doc][command] == 1] if self.secondary_topic else self.w[doc][command])
+                                    M_ast_prop[1] += self.M[doc][inds]
+                                    Z_prop[1] += np.sum(self.z[doc][inds])
+                                Q = Counter(self.w[doc][inds][self.z[doc][inds] == 1] if self.secondary_topic else self.w[doc][inds])
                                 for v in Q:
                                     W_prop[1,v] += Q[v]
-                else:
-                    S_prop[0,self.t[d]] += 1
-                    S_prop[1,self.t[d_prime]] += 1
-                    Wjd = Counter(self.w[d][j])
-                    for v in Wjd:
-                        W_prop[0,v] += Wjd[v]
-                    if self.secondary_topic:
-                        M_ast_prop[0] = self.M[d][j]
-                        Z_prop[0] = np.sum(self.z[d][j]) 
-                    Wjd = Counter(self.w[d_prime][j_prime])
-                    for v in Wjd:
-                        W_prop[1,v] += Wjd[v]
-                    if self.secondary_topic:
-                        M_ast_prop[1] = self.M[d_prime][j_prime]
-                        Z_prop[1] = np.sum(self.z[d_prime][j_prime]) 
             else:
                 # Merge move
                 indices = {} 
@@ -961,12 +989,15 @@ class topic_model:
                                     M_ast_temp[sjd_new] += self.M[doc][command]
                                     Z_temp[sjd_new] += Zjd
             else:
-                probs_proposal = - len(indices) * np.log(2)
+                probs_proposal = -(np.sum(S_prop)-2) * np.log(2)
             # Calculate the Metropolis-Hastings acceptance ratio
             s_indices = np.array([s,s_ast])
-            acceptance_ratio = np.sum(loggamma(self.gamma + S_prop)) - np.sum(loggamma(self.gamma + self.S[:,s_indices]))
-            acceptance_ratio += np.sum(loggamma(self.tau + W_prop)) - np.sum(loggamma(self.eta + self.W[s_indices + (1 if self.secondary_topic else 0)]))
-            acceptance_ratio -= np.sum(loggamma(np.sum(self.eta + W_prop, axis=1))) - np.sum(loggamma(np.sum(self.eta + self.W[s_indices + (1 if self.secondary_topic else 0)], axis=1)))
+            acceptance_ratio = np.sum(loggamma(self.gamma + S_prop))
+            acceptance_ratio -= np.sum(loggamma(self.gamma + self.S[:,s_indices]))
+            acceptance_ratio += np.sum(loggamma(self.tau + W_prop))
+            acceptance_ratio -= np.sum(loggamma(self.eta + self.W[s_indices + (1 if self.secondary_topic else 0)]))
+            acceptance_ratio -= np.sum(loggamma(np.sum(self.eta + W_prop, axis=1)))
+            acceptance_ratio += np.sum(loggamma(np.sum(self.eta + self.W[s_indices + (1 if self.secondary_topic else 0)], axis=1)))
             if self.secondary_topic:
                 acceptance_ratio += np.sum(loggamma(self.alpha + Z_prop)) + np.sum(loggamma(self.alpha0 + M_ast_prop - Z_prop))
                 acceptance_ratio -= np.sum(loggamma(self.alpha + self.alpha0 + M_ast_prop))
@@ -989,8 +1020,8 @@ class topic_model:
                 else:
                     self.s[d][j] = s
                     self.s[d_prime][j_prime] = s
-                    for doc in indices:
-                        self.s[doc][indices[doc]] = s
+                    for doc in indices_d:
+                        self.s[doc][indices_s[doc]] = s
                 self.S[:,s] = S_prop[0]; self.S[:,s_ast] = S_prop[1]
                 self.W[s + (1 if self.secondary_topic else 0)] = W_prop[0]; self.W[s_ast + (1 if self.secondary_topic else 0)] = W_prop[1] 
                 if self.secondary_topic:
@@ -998,40 +1029,55 @@ class topic_model:
                     self.Z[s] = Z_prop[0]; self.Z[s_ast] = Z_prop[1]
 
     ## Runs MCMC chain
-    def MCMC(self, iterations, burnin=0, verbose=True, calculate_ll=False):
+    def MCMC(self, iterations, burnin=0, size=1, verbose=True, calculate_ll=False, random_allocation=False, jupy_out=False):
         # Moves
         moves = ['t', 'split_merge_session']
         moves_probs = [5, 1]
         if self.command_level_topics:
             moves += ['s', 'split_merge_command']
-            moves_probs += [10, 2]
+            moves_probs += [5, 2]
         if self.secondary_topic:
             moves += ['z']
-            moves_probs += [10]
+            moves_probs += [5]
         moves_probs /= np.sum(moves_probs)
+        ## Marginal posterior
         if calculate_ll:
             ll = []
         for it in range(iterations+burnin):
-            # Print progression
-            if verbose:
-                if it < burnin:
-                    print('\rBurnin: ', str(it+1), ' / ', str(burnin), sep='', end='')
-                else:
-                    print('\rProgression: ', str(it+1), ' / ', str(iterations), sep='', end='')
             # Sample move
             move = np.random.choice(moves, p=moves_probs)
             # Do move
             if move == 't':
-                self.resample_session_topics()
+                self.resample_session_topics(size=size)
             elif move == 's':
-                self.resample_command_topics()
+                self.resample_command_topics(size=size)
             elif move == 'z':
-                self.resample_indicators()
+                self.resample_indicators(size=size)
             elif move == 'split_merge_session':
-                self.split_merge_session()
+                self.split_merge_session(random_allocation=random_allocation)
             else:
-                self.split_merge_command()
+                self.split_merge_command(random_allocation=random_allocation)
             if calculate_ll:
                 ll += [self.marginal_loglikelihood()]
+            # Print progression
+            if verbose:
+                if it < burnin:
+                    if jupy_out:
+                        clear_output(wait=True)
+                        display('Burnin: ' + str(it+1) + ' / ' + str(burnin)) 
+                    else:
+                        print('\rBurnin: ', str(it+1), ' / ', str(burnin), sep='', end=' ', flush=True)
+                elif it == burnin and burnin > 0:
+                    if jupy_out:
+                        clear_output(wait=True)
+                        display('Progression: ' + str(it-burnin+1) + ' / ' + str(iterations)) 
+                    else:
+                        print('\nProgression: ', str(it-burnin+1), ' / ', str(iterations), sep='', end=' ', flush=True)
+                else:
+                    if jupy_out:
+                        clear_output(wait=True)
+                        display('Progression: ' + str(it-burnin+1) + ' / ' + str(iterations))         
+                    else:
+                        print('\rProgression: ', str(it-burnin+1), ' / ', str(iterations), sep='', end=' ', flush=True)
         if calculate_ll:
             return ll
