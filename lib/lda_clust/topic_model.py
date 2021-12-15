@@ -350,7 +350,7 @@ class topic_model:
                     raise ValueError('H must be an integer value larger or equal to 2 if command-level topics are used.') 
             else:
                 H = np.copy(self.H)
-            if K > H:
+            if K < H:
                 raise ValueError('K must be larger than H for initialising with spectral clustering.')
         # Build co-occurrence matrix
         cooccurrence_matrix = {}

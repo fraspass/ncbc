@@ -1,8 +1,9 @@
 #! /usr/bin/env python3
 from nltk.tokenize import RegexpTokenizer
 from gensim.corpora import Dictionary
+import urllib
 
-def clean_commands(dat, no_below=2, no_above=1.1):
+def clean_commands(dat, no_below=1, no_above=1.1, url_hostnames=True):
     """
     This function 
     1. splits multiple commands in the same line
@@ -11,15 +12,14 @@ def clean_commands(dat, no_below=2, no_above=1.1):
 
     :param dat: dataset
     :param no_below: Keep tokens which are contained in at least no_below documents.
-    :param no_above: Keep tokens which are contained in no more than no_above documents 
-    (fraction of total corpus size, not an absolute number).
+    :param no_above: Keep tokens which are contained in no more than no_above documents (fraction of total corpus size, not an absolute number).
 
     :return sessins_token_list: tokenized list of sessions of commands
     :return dictionary: dictionary generated
     """
     # for commands splitted by ;
     sessions = []
-    for session in dat['Commands']:
+    for session in dat:
         sessions.append([]) # to make list of lists
         for command in session:
             sessions[-1] += command.split('; ')
@@ -31,7 +31,18 @@ def clean_commands(dat, no_below=2, no_above=1.1):
         sessions_list.append([])
         commands_list.append([])
         for command in session:
-            command_token = tokenizer.tokenize(command)
+            if url_hostnames and 'http' in command:
+                    command_split = command.split(' ')
+                    command_new = ''
+                    for word in command_split:
+                        if 'http' in word:
+                            command_new += str(urllib.parse.urlparse(word).hostname)
+                        else:
+                            command_new += word
+                        command_new += ' '
+                    command_token = tokenizer.tokenize(command_new)
+            else:
+                command_token = tokenizer.tokenize(command)
             sessions_list[-1] += [command_token]
             commands_list[-1] += command_token
     dictionary = Dictionary(commands_list) 
