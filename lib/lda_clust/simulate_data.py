@@ -1,4 +1,5 @@
 #! /usr/bin/env python3
+from distutils import command
 import numpy as np
 
 ## Normalise numpy 1D array
@@ -101,34 +102,34 @@ def simulate_data(D, K=0, fixed_K = True, H=0, fixed_H = True, V=0, fixed_V = Tr
     t = np.random.choice(K if fixed_K else stick_truncation, size=D, p=lam)
     # Sample phi
     phi = {}
-    for k in range((K if fixed_K else stick_truncation) + (1 if secondary_topic else 0)):
-        if (command_level_topics and not fixed_H) or (not command_level_topics and not fixed_V):
+    if not command_level_topics:
+        rr = range((K if fixed_K else stick_truncation) + (1 if secondary_topic else 0))
+    else:
+        rr = range((H if fixed_H else stick_truncation) + (1 if secondary_topic else 0))
+    for k in rr:
+        if not fixed_V:
             b = np.random.beta(a=1, b=eta, size=stick_truncation)
             phi[k] = np.ones(stick_truncation)
             phi[k][0] = b[0]
             phi[k][1:-1] = b[1:-1] * np.cumprod(1-b)[:-2]
             phi[k][-1] = 1 - np.sum(phi[k][:-1])
-        elif command_level_topics and fixed_H:
-            phi[k] = np.random.dirichlet(alpha=np.ones(H)*eta)
-        elif not command_level_topics and fixed_V:
-            phi[k] = np.random.dirichlet(alpha=np.ones(V)*eta)
-    # Sample quantities for command level topics
+        else:
+            phi[k] = np.random.dirichlet(alpha=np.ones(V)*eta)         
     if command_level_topics:
+        psi = {}
+        for k in range(K if fixed_K else stick_truncation):
+            if not fixed_H:
+                b = np.random.beta(a=1, b=tau, size=stick_truncation)
+                psi[k] = np.ones(stick_truncation)
+                psi[k][0] = b[0]
+                psi[k][1:-1] = b[1:-1] * np.cumprod(1-b)[:-2]
+                psi[k][-1] = 1 - np.sum(phi[k][:-1])
+            else:
+                psi[k] = np.random.dirichlet(alpha=np.ones(H)*tau)
         # Sample s
         s = {}
         for d in range(D):
-            s[d] = np.random.choice(H if fixed_H else stick_truncation, size=N[d], p=phi[t[d]])
-        ## Sample psi
-        psi = {}
-        for h in range((H if fixed_H else stick_truncation) + (1 if secondary_topic else 0)):
-            if not fixed_V:
-                b = np.random.beta(a=1, b=tau, size=stick_truncation)
-                psi[h] = np.ones(stick_truncation)
-                psi[h][0] = b[0]
-                psi[h][1:-1] = b[1:-1] * np.cumprod(1-b)[:-2]
-                psi[h][-1] = 1 - np.sum(psi[h][:-1])
-            else:
-                psi[h] = np.random.dirichlet(alpha=np.ones(V)*tau)
+            s[d] = np.random.choice(H if fixed_H else stick_truncation, size=N[d], p=psi[t[d]])
     # Sample theta for secondary topics
     if secondary_topic:
         if not command_level_topics:
@@ -146,20 +147,15 @@ def simulate_data(D, K=0, fixed_K = True, H=0, fixed_H = True, V=0, fixed_V = Tr
         for j in range(N[d]):
             if secondary_topic:
                 w[d][j] = np.zeros(M[d][j], dtype=int)
-            if not command_level_topics:
-                if not secondary_topic:
-                    w[d][j] = np.random.choice(V if fixed_V else stick_truncation, size=M[d][j], p=phi[t[d]])
+            if not secondary_topic:
+                w[d][j] = np.random.choice(V if fixed_V else stick_truncation, size=M[d][j], p=phi[s[d][j] if command_level_topics else t[d]])
+            else:
+                if command_level_topics:
+                    z[d][j] = np.random.choice(2, size=M[d][j], p=[1-theta[s[d][j]],theta[s[d][j]]])
                 else:
                     z[d][j] = np.random.choice(2, size=M[d][j], p=[1-theta[t[d]],theta[t[d]]])
-                    w[d][j][z[d][j] == 0] = np.random.choice(V if fixed_V else stick_truncation, size=np.sum(1-z[d][j]), p=phi[0])
-                    w[d][j][z[d][j] == 1] = np.random.choice(V if fixed_V else stick_truncation, size=np.sum(z[d][j]), p=phi[t[d]+1])
-            else:
-                if not secondary_topic:
-                    w[d][j] = np.random.choice(V if fixed_V else stick_truncation, size=M[d][j], p=psi[s[d][j]])
-                else:
-                    z[d][j] = np.random.choice(2, size=M[d][j], p=[1-theta[s[d][j]],theta[s[d][j]]])
-                    w[d][j][z[d][j] == 0] = np.random.choice(V if fixed_V else stick_truncation, size=np.sum(1-z[d][j]), p=psi[0])
-                    w[d][j][z[d][j] == 1] = np.random.choice(V if fixed_V else stick_truncation, size=np.sum(z[d][j]), p=psi[s[d][j]+1])      
+                w[d][j][z[d][j] == 0] = np.random.choice(V if fixed_V else stick_truncation, size=np.sum(1-z[d][j]), p=phi[0])
+                w[d][j][z[d][j] == 1] = np.random.choice(V if fixed_V else stick_truncation, size=np.sum(z[d][j]), p=phi[(s[d][j] if command_level_topics else t[d])+1])     
     # Define output
     out = {}
     out['t'] = t
