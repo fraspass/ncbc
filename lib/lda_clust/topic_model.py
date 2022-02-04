@@ -16,7 +16,7 @@ from IPython.display import display, clear_output
 class topic_model:
     
     # The class can be used to fit one of the topic models discussed in:
-    # _authornames_
+    # Sanna Passino, F., Mantziou, A., Thiede, P., Bevington, R. and Heard, N.A.
     # "Topic modelling of command lines for attack pattern detection in cyber-security"
     # Required input: W - dictionary of dictionaries containing the words (as consecutive integers starting at 0)
 
@@ -350,8 +350,8 @@ class topic_model:
                     raise ValueError('H must be an integer value larger or equal to 2 if command-level topics are used.') 
             else:
                 H = np.copy(self.H)
-            if K < H:
-                raise ValueError('K must be larger than H for initialising with spectral clustering.')
+            if K > H:
+                raise ValueError('K must be smaller than H for initialising with spectral clustering.')
         # Build co-occurrence matrix
         cooccurrence_matrix = {}
         for d in self.w:
@@ -1029,7 +1029,8 @@ class topic_model:
                     self.Z[s] = Z_prop[0]; self.Z[s_ast] = Z_prop[1]
 
     ## Runs MCMC chain
-    def MCMC(self, iterations, burnin=0, size=1, verbose=True, calculate_ll=False, random_allocation=False, jupy_out=False):
+    def MCMC(self, iterations, burnin=0, size=1, verbose=True, calculate_ll=False, random_allocation=False, jupy_out=False, 
+                return_t=True, return_s=False, return_z=False, thinning=1):
         # Moves
         moves = ['t', 'split_merge_session']
         moves_probs = [5, 1]
@@ -1043,6 +1044,20 @@ class topic_model:
         ## Marginal posterior
         if calculate_ll:
             ll = []
+        ## Return output
+        Q = int(iterations // thinning)
+        if return_t:
+            t_out = np.zeros((Q,self.D),dtype=int)
+        if return_s and self.command_level_topics:
+            s_out = {}
+            for d in range(self.D):
+                s_out[d] = np.zeros((Q,self.N[d]),dtype=int)
+        if return_z and self.secondary_topic:
+            z_out = {}
+            for d in range(self.D):
+                z_out[d] = {}
+                for j in range(self.N[d]):
+                    z_out[d][j] = np.zeros((Q,self.M[d][j]),dtype=int)
         for it in range(iterations+burnin):
             # Sample move
             move = np.random.choice(moves, p=moves_probs)
@@ -1079,5 +1094,27 @@ class topic_model:
                         display('Progression: ' + str(it-burnin+1) + ' / ' + str(iterations))         
                     else:
                         print('\rProgression: ', str(it-burnin+1), ' / ', str(iterations), sep='', end=' ', flush=True)
+            ## Store output
+            if it >= burnin and (it - burnin) % thinning == 0:
+                q = (it - burnin) // thinning
+                if return_t:
+                    t_out[q] = np.copy(self.t)
+                if return_s and self.command_level_topics:
+                    for d in range(self.D):
+                        s_out[d][q] = np.copy(self.s[d])
+                if return_z and self.secondary_topic:
+                    for d in range(self.D):
+                        for j in range(self.N[d]):
+                            z_out[d][j][q] = np.copy(self.z[d][j])
+        ## Output
+        out = {}
         if calculate_ll:
-            return ll
+            out['loglik'] = ll
+        if return_t:
+            out['t'] = t_out
+        if return_s and self.command_level_topics:
+            out['s'] = s_out
+        if return_z and self.secondary_topic:
+            out['z'] = z_out
+        ## Return output
+        return out
