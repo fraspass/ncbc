@@ -1,7 +1,7 @@
 *.egg-info/
 __pycache__/
-lda_clust/lib/lda_clust/data/
-lda_clust/lib/lda_clust/results/
-lda_clust/lib/*.ipynb
-lda_clust/lib/.ipynb_*
-lda_clust/lib/__pycache__/
+data/
+results/
+simulated_data_eda.ipynb
+.ipynb_*
+
