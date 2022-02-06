@@ -1,2 +1,7 @@
 *.egg-info/
 __pycache__/
+lib/lda_clust/data/
+lib/lda_clust/results/
+lib/*.ipynb
+lib/.ipynb_*
+lib/__pycache__/

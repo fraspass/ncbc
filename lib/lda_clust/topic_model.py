@@ -10,7 +10,7 @@ from scipy.sparse import coo_matrix
 from scipy.sparse.linalg import svds
 from numpy.linalg import svd
 from sklearn.cluster import KMeans
-from .utils import logB
+from utils import logB
 from IPython.display import display, clear_output
 
 class topic_model:
@@ -223,12 +223,24 @@ class topic_model:
         self.init_counts()
 
     ## Initializes uniformly at random
-    def random_init(self):
+    def random_init(self, K_init=None, H_init=None):
+        if K_init is not None:
+            if not isinstance(K_init, int) or K_init < 1:
+                raise ValueError('K_init must be an integer value larger or equal to 1.') 
+        else:
+            K_init = np.copy(self.K)
+        # Check if the provided value for H is appropriate
+        if self.command_level_topics:
+            if H_init is not None:
+                if not isinstance(H_init, int) or (self.command_level_topics and H_init < 2):
+                    raise ValueError('H_init must be an integer value larger or equal to 2 if command-level topics are used.') 
+            else:
+                H_init = np.copy(self.H)
         # Random initialisation
-        self.t = np.random.choice(self.K, size=self.D)
+        self.t = np.random.choice(K_init, size=self.D)
         for d in range(self.D):
             if self.command_level_topics:
-                self.s[d] = np.random.choice(self.H, size=len(self.w[d]))
+                self.s[d] = np.random.choice(H_init, size=len(self.w[d]))
             if self.secondary_topic:
                 self.z[d] = {}
                 for j in self.w[d]:
@@ -237,7 +249,19 @@ class topic_model:
         self.init_counts()   
 
     ## Initializes chain using gensim   
-    def gensim_init(self, chunksize=2000, passes=100, iterations=1000, eval_every=None):
+    def gensim_init(self, chunksize=2000, passes=100, iterations=1000, eval_every=None, K_init=None, H_init=None):
+        if K_init is not None:
+            if not isinstance(K_init, int) or K_init < 1:
+                raise ValueError('K_init must be an integer value larger or equal to 1.') 
+        else:
+            K_init = np.copy(self.K)
+        # Check if the provided value for H is appropriate
+        if self.command_level_topics:
+            if H_init is not None:
+                if not isinstance(H_init, int) or (self.command_level_topics and H_init < 2):
+                    raise ValueError('H_init must be an integer value larger or equal to 2 if command-level topics are used.') 
+            else:
+                H_init = np.copy(self.H)
         # Convert words into strings (gensim requirement)
         docs = []
         for d in self.w:
@@ -253,7 +277,7 @@ class topic_model:
         # Create corpus
         corpus = [dictionary.doc2bow(doc) for doc in docs]
         # Set number of topics
-        num_topics = (self.K if not self.command_level_topics else self.H) + (1 if self.secondary_topic else 0)
+        num_topics = (K_init if not self.command_level_topics else H_init) + (1 if self.secondary_topic else 0)
         # Model setup
         id2word = dictionary.id2token
         model = LdaModel(corpus = corpus, id2word=id2word, chunksize=chunksize, alpha='auto', eta='auto',
@@ -300,14 +324,14 @@ class topic_model:
                         primary_t = int(Counter(topic_allocation[d][topic_allocation[d] != secondary_t]).most_common(1)[0][0])
                         self.t[d] = primary_t - (1 if primary_t > secondary_t else 0)
                     else:
-                        self.t[d] = np.random.choice(self.K)
+                        self.t[d] = np.random.choice(K_init)
                 for j in self.w[d]:
                     if self.command_level_topics:
                         if np.sum(topic_allocation[d,j] != secondary_t) > 0:
                             primary_t = int(Counter(topic_allocation[d,j][topic_allocation[d,j] != secondary_t]).most_common(1)[0][0])
                             self.s[d][j] = primary_t - (1 if primary_t > secondary_t else 0)
                         else:
-                            self.s[d][j] = np.random.choice(self.H)
+                            self.s[d][j] = np.random.choice(H_init)
                     self.z[d][j] = np.array([int(np.argmax([topic_term[secondary_t,v], np.sum(np.delete(topic_term[:,v],secondary_t))])) for v in self.w[d][j]])  
                     ## self.z[d][j] = np.array([int(np.argmax([topic_term[secondary_t,v], topic_term[primary_t,v]])) for v in self.w[d][j]])
         # If command-level topics are used, repeat gensim
@@ -324,7 +348,7 @@ class topic_model:
             # Model setup
             id2word = dictionary.id2token
             model = LdaModel(corpus = corpus, id2word=id2word, chunksize=chunksize, alpha='auto', eta='auto',
-                    iterations=iterations, num_topics=self.K, passes=passes, eval_every=eval_every,)
+                    iterations=iterations, num_topics=K_init, passes=passes, eval_every=eval_every,)
             topic_term = model.get_topics()
             # Estimate topics
             for d in self.w:
@@ -336,22 +360,22 @@ class topic_model:
         self.init_counts()
 
     ## Initializes chain using spectral clustering  
-    def spectral_init(self, K=None, H=None):
+    def spectral_init(self, K_init=None, H_init=None):
         # Check if the provided value for K is appropriate
-        if K is not None:
-            if not isinstance(K, int) or K < 1:
-                raise ValueError('K must be an integer value larger or equal to 1.') 
+        if K_init is not None:
+            if not isinstance(K_init, int) or K_init < 1:
+                raise ValueError('K_init must be an integer value larger or equal to 1.') 
         else:
-            K = np.copy(self.K)
+            K_init = np.copy(self.K)
         # Check if the provided value for H is appropriate
         if self.command_level_topics:
-            if H is not None:
-                if not isinstance(H, int) or (self.command_level_topics and H < 2):
-                    raise ValueError('H must be an integer value larger or equal to 2 if command-level topics are used.') 
+            if H_init is not None:
+                if not isinstance(H_init, int) or (self.command_level_topics and H_init < 2):
+                    raise ValueError('H_init must be an integer value larger or equal to 2 if command-level topics are used.') 
             else:
-                H = np.copy(self.H)
-            if K > H:
-                raise ValueError('K must be smaller than H for initialising with spectral clustering.')
+                H_init = np.copy(self.H)
+            if K_init > H_init:
+                raise ValueError('K_init must be smaller than H_init for initialising with spectral clustering.')
         # Build co-occurrence matrix
         cooccurrence_matrix = {}
         for d in self.w:
@@ -372,8 +396,8 @@ class topic_model:
         # Co-occurrence matrix
         cooccurrence_matrix = coo_matrix((vals, (rows, cols)), shape=(self.N_cumsum[-1] if self.command_level_topics else self.D, self.V))
 		## Spectral decomposition of A
-        U, S, _ = svds(cooccurrence_matrix.asfptype(), k=H if self.command_level_topics else K)
-        kmod = KMeans(n_clusters=H if self.command_level_topics else K, random_state=0).fit(U[:,::-1] * (S[::-1] ** .5))
+        U, S, _ = svds(cooccurrence_matrix.asfptype(), k=H_init if self.command_level_topics else K_init)
+        kmod = KMeans(n_clusters=H_init if self.command_level_topics else K_init, random_state=0).fit(U[:,::-1] * (S[::-1] ** .5))
         if not self.command_level_topics:
             self.t = kmod.labels_
         else:
@@ -389,16 +413,16 @@ class topic_model:
                 vals += list(cooccurrence_matrix[key].values())
                 rows += [key] * len(cooccurrence_matrix[key])
                 cols += list(cooccurrence_matrix[key].keys())
-            if K > 1:
+            if K_init > 1:
                 # Co-occurrence matrix
-                cooccurrence_matrix = coo_matrix((vals, (rows, cols)), shape=(self.D, self.H))
+                cooccurrence_matrix = coo_matrix((vals, (rows, cols)), shape=(self.D, H_init))#!changed from self.H
                 ## Spectral decomposition
-                if K < H:
-                    U, S, _ = svds(cooccurrence_matrix.asfptype(), k=K)
-                    kmod = KMeans(n_clusters=K, random_state=0).fit(U[:,::-1] * (S[::-1] ** .5))
+                if K_init < H_init:
+                    U, S, _ = svds(cooccurrence_matrix.asfptype(), k=K_init)
+                    kmod = KMeans(n_clusters=K_init, random_state=0).fit(U[:,::-1] * (S[::-1] ** .5))
                 else:
                     U, S, _ = svd(cooccurrence_matrix.todense(), full_matrices=False)
-                    kmod = KMeans(n_clusters=K, random_state=0).fit(np.array(U)[:,::-1] * (S[::-1] ** .5))
+                    kmod = KMeans(n_clusters=K_init, random_state=0).fit(np.array(U)[:,::-1] * (S[::-1] ** .5))
                 self.t = kmod.labels_
             else:
                 self.t = np.zeros(self.D, dtype=int)
