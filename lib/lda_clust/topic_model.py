@@ -10,7 +10,7 @@ from scipy.sparse import coo_matrix
 from scipy.sparse.linalg import svds
 from numpy.linalg import svd
 from sklearn.cluster import KMeans
-from utils import logB
+from .utils import logB
 from IPython.display import display, clear_output
 
 class topic_model:
@@ -280,8 +280,9 @@ class topic_model:
         num_topics = (K_init if not self.command_level_topics else H_init) + (1 if self.secondary_topic else 0)
         # Model setup
         id2word = dictionary.id2token
+        word2id = dictionary.token2id
         model = LdaModel(corpus = corpus, id2word=id2word, chunksize=chunksize, alpha='auto', eta='auto',
-                    iterations=iterations, num_topics=num_topics, passes=passes, eval_every=eval_every,)
+                    iterations=iterations, num_topics=num_topics, passes=passes, eval_every=eval_every)
         # Obtain topics from LDA
         topic_allocation = {}
         self.t = np.zeros(self.D, dtype=int)
@@ -300,9 +301,9 @@ class topic_model:
                     topic_allocation[d,j] = []
                 for v in self.w[d][j]:
                     if self.command_level_topics:
-                        topic_allocation[d,j] = np.append(topic_allocation[d,j],np.argmax(topic_term[:,v]))
+                        topic_allocation[d,j] = np.append(topic_allocation[d,j],np.argmax(topic_term[:,word2id[str(v)]]))
                     else:
-                        topic_allocation[d] = np.append(topic_allocation[d],np.argmax(topic_term[:,v]))
+                        topic_allocation[d] = np.append(topic_allocation[d],np.argmax(topic_term[:,word2id[str(v)]]))
                 if self.command_level_topics:
                     if self.secondary_topic:
                         all_counter += Counter(topic_allocation[d,j])
@@ -332,7 +333,7 @@ class topic_model:
                             self.s[d][j] = primary_t - (1 if primary_t > secondary_t else 0)
                         else:
                             self.s[d][j] = np.random.choice(H_init)
-                    self.z[d][j] = np.array([int(np.argmax([topic_term[secondary_t,v], np.sum(np.delete(topic_term[:,v],secondary_t))])) for v in self.w[d][j]])  
+                    self.z[d][j] = np.array([int(np.argmax([topic_term[secondary_t,word2id[str(v)]], np.sum(np.delete(topic_term[:,word2id[str(v)]],secondary_t))])) for v in self.w[d][j]])  
                     ## self.z[d][j] = np.array([int(np.argmax([topic_term[secondary_t,v], topic_term[primary_t,v]])) for v in self.w[d][j]])
         # If command-level topics are used, repeat gensim
         if self.command_level_topics:
@@ -347,14 +348,15 @@ class topic_model:
             corpus = [dictionary.doc2bow(doc) for doc in docs]
             # Model setup
             id2word = dictionary.id2token
+            word2id = dictionary.token2id
             model = LdaModel(corpus = corpus, id2word=id2word, chunksize=chunksize, alpha='auto', eta='auto',
-                    iterations=iterations, num_topics=K_init, passes=passes, eval_every=eval_every,)
+                    iterations=iterations, num_topics=K_init, passes=passes, eval_every=eval_every)
             topic_term = model.get_topics()
             # Estimate topics
             for d in self.w:
                 topic_allocation = []
                 for s in self.s[d]:
-                    topic_allocation = np.append(topic_allocation,np.argmax(topic_term[:,s]))
+                    topic_allocation = np.append(topic_allocation,np.argmax(topic_term[:,word2id[str(s)]]))
                 self.t[d] = int(Counter(topic_allocation).most_common(1)[0][0])
         # Initialise counts
         self.init_counts()
