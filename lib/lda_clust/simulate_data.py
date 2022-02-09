@@ -154,8 +154,8 @@ def simulate_data(D, K=0, fixed_K = True, H=0, fixed_H = True, V=0, fixed_V = Tr
                     z[d][j] = np.random.choice(2, size=M[d][j], p=[1-theta[s[d][j]],theta[s[d][j]]])
                 else:
                     z[d][j] = np.random.choice(2, size=M[d][j], p=[1-theta[t[d]],theta[t[d]]])
-                w[d][j][z[d][j] == 0] = np.random.choice(V if fixed_V else stick_truncation, size=np.sum(1-z[d][j]), p=phi[0])
-                w[d][j][z[d][j] == 1] = np.random.choice(V if fixed_V else stick_truncation, size=np.sum(z[d][j]), p=phi[(s[d][j] if command_level_topics else t[d])+1])     
+                w[d][j][z[d][j] == 0] = np.random.choice(V if fixed_V else stick_truncation, size=np.sum(1-z[d][j]), p=phi[list(phi.keys())[-1]])
+                w[d][j][z[d][j] == 1] = np.random.choice(V if fixed_V else stick_truncation, size=np.sum(z[d][j]), p=phi[(s[d][j] if command_level_topics else t[d])])     
     # Define output
     out = {}
     out['t'] = t

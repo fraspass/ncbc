@@ -2,6 +2,10 @@
 __pycache__/
 data/
 results/
+topic_model.py
+simulations_cfg/
 simulated_data_eda.ipynb
+simul_results_visual.ipynb
+simul_yml.py
 .ipynb_*
 

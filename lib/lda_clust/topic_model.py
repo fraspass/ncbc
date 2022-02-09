@@ -10,7 +10,7 @@ from scipy.sparse import coo_matrix
 from scipy.sparse.linalg import svds
 from numpy.linalg import svd
 from sklearn.cluster import KMeans
-from .utils import logB
+from utils import logB
 from IPython.display import display, clear_output
 
 class topic_model:
