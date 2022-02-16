@@ -1,7 +1,7 @@
 import argparse
 import pickle
 import os 
-from topic_model import *
+from lda_clust.topic_model import *
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("Topic model parser")
