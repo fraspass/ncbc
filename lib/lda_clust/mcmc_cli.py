@@ -1,4 +1,5 @@
 import argparse
+#import pickle5 as pickle
 import pickle
 import os 
 from lda_clust.topic_model import *
@@ -36,7 +37,9 @@ if __name__ == "__main__":
     parser.add_argument("--return-s", default=False, action='store_true', help = "Save posterior draws for s")
     parser.add_argument("--return-z", default=False, action='store_true', help = "Save posterior draws for z")
     parser.add_argument("--thinning", type = int, default=1, metavar="N", help = "Thinning")
-
+    parser.add_argument("--return-change-t", default=False, action='store_true', help = "Return counter of changes in t")
+    parser.add_argument("--return-change-s", default=False, action='store_true', help = "Return counter of changes in s")
+    parser.add_argument("--return-change-z", default=False, action='store_true', help = "Return counter of changes in z")
 
     #Initialization functions
     parser.add_argument(
@@ -77,6 +80,8 @@ if __name__ == "__main__":
         data.update({"s": None})
     
     if args.mod_init == "custom":
+        #t_test=np.repeat(2,len(data['t']))
+        #model.custom_init(t = t_test, s = data["s"], z = data["z"])
         model.custom_init(t = data["t"], s = data["s"], z = data["z"])
     elif args.mod_init == "random":
         model.random_init(K_init=args.K_init, H_init=args.H_init)
@@ -92,13 +97,14 @@ if __name__ == "__main__":
         iterations=args.iter, burnin=args.burn, size = args.size,
         verbose=args.verbose,calculate_ll=args.calc_ll,random_allocation=args.rand_alloc,
         jupy_out=args.jupy_out,return_s=args.return_s, return_t=args.return_t,return_z=args.return_z,
-        thinning=args.thinning
+        thinning=args.thinning, return_change_t=args.return_change_t, return_change_s=args.return_change_s,
+        return_change_z=args.return_change_z
         )
 
     #if not os.path.exists("./results/"):
     #    os.mkdir("./results/")
 
-    #with open(args.save_dir,"wb") as savefile:
-    #    pickle.dump(mcmc,savefile,protocol=pickle.HIGHEST_PROTOCOL)
-    print(mcmc)
+    with open(args.save_dir,"wb") as savefile:
+        pickle.dump(mcmc,savefile,protocol=pickle.HIGHEST_PROTOCOL)
+    #print(mcmc)
     

@@ -8,6 +8,7 @@ def normalise(x):
 
 ## Simulate data from the topic model
 def simulate_data(D, K=0, fixed_K = True, H=0, fixed_H = True, V=0, fixed_V = True, 
+                    N_num=0, fixed_N = False, M_num=0, fixed_M = False, psi_dic=0, fixed_psi = False,
                     secondary_topic = False, command_level_topics = False, 
                     gamma=1.0, eta=1.0, alpha=1.0, alpha0=1.0, tau=1.0,
                     csi=1, omega=10, stick_truncation=100, seed=111):
@@ -83,11 +84,18 @@ def simulate_data(D, K=0, fixed_K = True, H=0, fixed_H = True, V=0, fixed_V = Tr
                 raise ValueError('The prior parameters tau must be positive.')
         else:
             raise TypeError('The prior parameter tau must be a float or integer.')
-    # Sample the number of commands and words for each session
-    N = np.random.poisson(lam=csi, size=D) + 1
+    # Sample the number of commands and words for each session or use fixed values for those N_num, M_num
+    if fixed_N:
+        N = np.repeat(N_num,D)
+    else:
+        N = np.random.poisson(lam=csi, size=D) + 1
     M = {}
-    for d in range(D):
-        M[d] = np.random.poisson(lam=omega, size=N[d]) + 1
+    if fixed_M:
+        for d in range(D):
+            M[d] = np.repeat(M_num,N[d])
+    else:
+        for d in range(D):
+            M[d] = np.random.poisson(lam=omega, size=N[d]) + 1
     # Sample the session-level allocations
     if fixed_K:
         lam = np.random.dirichlet(alpha=np.ones(K)*gamma)
@@ -116,16 +124,19 @@ def simulate_data(D, K=0, fixed_K = True, H=0, fixed_H = True, V=0, fixed_V = Tr
         else:
             phi[k] = np.random.dirichlet(alpha=np.ones(V)*eta)         
     if command_level_topics:
-        psi = {}
-        for k in range(K if fixed_K else stick_truncation):
-            if not fixed_H:
-                b = np.random.beta(a=1, b=tau, size=stick_truncation)
-                psi[k] = np.ones(stick_truncation)
-                psi[k][0] = b[0]
-                psi[k][1:-1] = b[1:-1] * np.cumprod(1-b)[:-2]
-                psi[k][-1] = 1 - np.sum(phi[k][:-1])
-            else:
-                psi[k] = np.random.dirichlet(alpha=np.ones(H)*tau)
+        if fixed_psi:
+            psi=psi_dic
+        else:
+            psi = {}
+            for k in range(K if fixed_K else stick_truncation):
+                if not fixed_H:
+                    b = np.random.beta(a=1, b=tau, size=stick_truncation)
+                    psi[k] = np.ones(stick_truncation)
+                    psi[k][0] = b[0]
+                    psi[k][1:-1] = b[1:-1] * np.cumprod(1-b)[:-2]
+                    psi[k][-1] = 1 - np.sum(phi[k][:-1])
+                else:
+                    psi[k] = np.random.dirichlet(alpha=np.ones(H)*tau)
         # Sample s
         s = {}
         for d in range(D):

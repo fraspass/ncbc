@@ -1,4 +1,6 @@
 #! /usr/bin/env python3
+from base64 import encode
+from encodings import utf_8
 import sys
 import numpy as np
 from collections import Counter
@@ -13,6 +15,9 @@ from sklearn.cluster import KMeans
 from .utils import logB
 from IPython.display import display, clear_output
 
+import logging
+logging.basicConfig(filename="debug.log" ,level=logging.DEBUG)
+
 class topic_model:
     
     # The class can be used to fit one of the topic models discussed in:
@@ -23,6 +28,7 @@ class topic_model:
     def __init__(self, W, K, fixed_K = True, H=0, fixed_H = True, V=0, fixed_V = True, 
                     secondary_topic = True, command_level_topics = True,
                     gamma=1.0, eta=1.0, alpha=1.0, alpha0=1.0, tau=1.0):
+        
         # Documents & sentences (sessions & commands) in python dictionary form
         self.w = W
         # Number of documents
@@ -122,6 +128,14 @@ class topic_model:
             self.s = {}
         if self.secondary_topic:
             self.z = {}
+        # Create counters of changes in t,s,z among iterations
+        self.change_counter_t = 0
+        if self.command_level_topics:
+            self.change_counter_s = 0
+        if self.secondary_topic:
+            self.change_counter_z = 0
+        #self.change_counter_s = dict.fromkeys(range(self.D),0)
+        #self.change_counter_z = dict.fromkeys(range(self.D),0)
 
     ## Calculate marginal posterior up to normalising constants
     def marginal_loglikelihood(self):
@@ -442,6 +456,8 @@ class topic_model:
         ## Optional input: subset - list of integers d
         if indices is None:
             indices = np.random.choice(self.D, size=size)
+        # Keep in t_old self.t to check for changes afterwards
+        t_old=np.copy(self.t)
         # Resample each document
         for d in indices:
             td_old = self.t[d]  
@@ -503,6 +519,9 @@ class topic_model:
                 if self.secondary_topic:
                     self.M_star[td_new] += np.sum(self.M[d])
                     self.Z[td_new] += Zd
+        # Check if self.t changed , and count +1 for the change in counter
+        if (t_old==self.t).all():
+            self.change_counter_t+=1
 
     ## Resample session-level topics
     def resample_command_topics(self, size=1, indices=None):
@@ -514,6 +533,7 @@ class topic_model:
             for d in indices_d:
                 indices_j += [int(np.random.choice(self.N[d]))]
             indices = np.vstack((indices_j,indices_d)).T
+        entry_count = 0
         for j, d in indices:
             td = self.t[d]
             s_old = int(self.s[d][j])
@@ -555,6 +575,12 @@ class topic_model:
             if self.secondary_topic:
                 self.M_star[s_new] += self.M[d][j]
                 self.Z[s_new] += Zdj
+            # Keep counter for changed commands in docs
+            if (s_old!=s_new) and (entry_count < 1):
+                entry_count += 1
+                #print("new s for doc ",d)
+                #self.change_counter_s[d]+=1
+                self.change_counter_s+=1
                         
     ## Resample indicator for primary-secondary topic
     def resample_indicators(self, size=1, indices=None):
@@ -568,6 +594,7 @@ class topic_model:
                 indices_j += [indj]
                 indices_i += [int(np.random.choice(self.M[d][indj]))]
             indices = np.vstack((indices_i,indices_j,indices_d)).T
+        entry_count = 0
         # Resample the primary-secondary topic indicators
         for i, j, d in indices:
             v = int(self.w[d][j][i])
@@ -589,6 +616,12 @@ class topic_model:
             # Update counts
             self.Z[topic] += z_new
             self.W[(topic+1)*z_new,v] += 1
+            # Counter for z changes in docs
+            if (z_old!=z_new) and (entry_count < 1):
+                entry_count+=1
+                #self.change_counter_z[d]+=1
+                self.change_counter_z+=1
+
 
     ## Split-merge move for session-level topics
     def split_merge_session(self, random_allocation=False):
@@ -819,6 +852,9 @@ class topic_model:
             accept = (-np.random.exponential(1) < acceptance_ratio)
             # Update if move is accepted
             if accept:
+                # Count +1 for change in values in t due to accept move
+                self.change_counter_t+=1
+                print("accepted move for t")
                 if split:
                     self.t[d_prime] = t_ast
                     self.t[indices[np.array(t_prop) == 0]] = t
@@ -1037,6 +1073,9 @@ class topic_model:
             accept = (-np.random.exponential(1) < acceptance_ratio)
             # Update if move is accepted
             if accept:
+                # Count +1 for change in values in s due to accept move
+                self.change_counter_s+=1
+                print("accepted move for s")
                 if split:
                     self.s[d][j] = s
                     self.s[d_prime][j_prime] = s_ast
@@ -1053,10 +1092,13 @@ class topic_model:
                 if self.secondary_topic:
                     self.M_star[s] = M_ast_prop[0]; self.M_star[s_ast] = M_ast_prop[1]
                     self.Z[s] = Z_prop[0]; self.Z[s_ast] = Z_prop[1]
+                # Counter of change for s
+                #for doc in np.append(indices_d,[d,d_prime]):
+                #    self.change_counter_s[doc]+=1
 
     ## Runs MCMC chain
     def MCMC(self, iterations, burnin=0, size=1, verbose=True, calculate_ll=False, random_allocation=False, jupy_out=False, 
-                return_t=True, return_s=False, return_z=False, thinning=1):
+                return_t=True, return_s=False, return_z=False, return_change_t=False, return_change_s=False, return_change_z=False, thinning=1):
         # Moves
         moves = ['t', 'split_merge_session']
         moves_probs = [5, 1]
@@ -1084,6 +1126,20 @@ class topic_model:
                 z_out[d] = {}
                 for j in range(self.N[d]):
                     z_out[d][j] = np.zeros((Q,self.M[d][j]),dtype=int)
+        # Return of counters
+        if return_change_t:
+            change_t_out = np.zeros(Q,dtype=int)
+        if return_change_s and self.command_level_topics:
+            change_s_out = np.zeros(Q,dtype=int)
+            #change_s_out={}
+            #for d in range(self.D):
+            #    change_s_out[d] = np.zeros(Q,dtype=int)
+        if return_change_z and self.secondary_topic:
+            change_z_out = np.zeros(Q,dtype=int)
+            #change_z_out={}
+            #for d in range(self.D):
+            #    change_z_out[d] = np.zeros(Q,dtype=int)
+        
         for it in range(iterations+burnin):
             # Sample move
             move = np.random.choice(moves, p=moves_probs)
@@ -1132,6 +1188,22 @@ class topic_model:
                     for d in range(self.D):
                         for j in range(self.N[d]):
                             z_out[d][j][q] = np.copy(self.z[d][j])
+                if return_change_t:
+                    change_t_out[q] = np.copy(self.change_counter_t)
+                    self.change_counter_t = 0 
+                if return_change_s and self.command_level_topics:
+                    change_s_out[q] = np.copy(self.change_counter_s)
+                    self.change_counter_s = 0 
+                    #for d in range(self.D):
+                    #    change_s_out[d][q]=np.copy(self.change_counter_s[d])
+                    #self.change_counter_s = dict.fromkeys(range(self.D),0)
+                if return_change_z and self.secondary_topic:
+                    change_z_out[q] = np.copy(self.change_counter_z)
+                    self.change_counter_z = 0 
+                    #for d in range(self.D):
+                    #    change_z_out[d][q]=np.copy(self.change_counter_z[d])
+                    #self.change_counter_z = dict.fromkeys(range(self.D),0)
+
         ## Output
         out = {}
         if calculate_ll:
@@ -1142,5 +1214,11 @@ class topic_model:
             out['s'] = s_out
         if return_z and self.secondary_topic:
             out['z'] = z_out
+        if return_change_t:
+            out['change_t_counter'] = change_t_out
+        if return_change_s and self.command_level_topics:
+            out['change_s_counter'] = change_s_out
+        if return_change_z and self.secondary_topic:
+            out['change_z_counter'] = change_z_out
         ## Return output
         return out
