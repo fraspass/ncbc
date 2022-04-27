@@ -1,7 +1,7 @@
 #! /usr/bin/env python3
-from base64 import encode
-from encodings import utf_8
-import sys
+# from base64 import encode
+# from encodings import utf_8
+# import sys
 import numpy as np
 from collections import Counter
 from scipy.sparse.construct import random
