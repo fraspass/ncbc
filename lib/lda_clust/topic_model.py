@@ -27,7 +27,7 @@ class topic_model:
 
     def __init__(self, W, K, fixed_K = True, H=0, fixed_H = True, V=0, fixed_V = True, 
                     secondary_topic = True, command_level_topics = True,
-                    gamma=1.0, eta=1.0, alpha=1.0, alpha0=1.0, tau=1.0):
+                    gamma=1.0, tau=1.0, eta=1.0, alpha=1.0, alpha0=1.0):
         
         # Documents & sentences (sessions & commands) in python dictionary form
         self.w = W
@@ -142,10 +142,10 @@ class topic_model:
         ll = 0
         ll += logB(self.gamma + self.T)
         if self.command_level_topics:
-            ll += np.sum([logB(self.eta + self.S[k]) for k in range(self.K)])
-            ll += np.sum([logB(self.tau + self.W[h]) for h in range(self.H + (1 if self.secondary_topic else 0))])
+            ll += np.sum([logB(self.tau + self.S[k]) for k in range(self.K)])
+            ll += np.sum([logB(self.eta + self.w[h]) for h in range(self.H + (1 if self.secondary_topic else 0))])
         else:
-            ll += np.sum([logB(self.eta + self.W[k]) for k in range(self.K + (1 if self.secondary_topic else 0))])
+            ll += np.sum([logB(self.eta + self.w[k]) for k in range(self.K + (1 if self.secondary_topic else 0))])
         if self.secondary_topic:
             ll += np.sum([logB(np.array([self.alpha + self.Z[k], self.alpha0 + self.M_star[k] - self.Z[k]])) for k in range(self.H if self.command_level_topics else self.K)])
         return ll 
@@ -487,22 +487,22 @@ class topic_model:
             probs = np.log(self.gamma + self.T)
             if self.command_level_topics:
                 for h in Sd:
-                    probs += np.sum(np.log(np.add.outer(self.eta + self.S[:,h], np.arange(Sd[h]))), axis=1)
-                probs -= np.sum(np.log(np.add.outer(np.sum(self.eta + self.S, axis=1), np.arange(np.sum(list(Sd.values()))))), axis=1)               
+                    probs += np.sum(np.log(np.add.outer(self.tau + self.S[:,h], np.arange(Sd[h]))), axis=1)
+                probs -= np.sum(np.log(np.add.outer(np.sum(self.tau + self.S, axis=1), np.arange(np.sum(list(Sd.values()))))), axis=1)               
             else:
                 if self.secondary_topic:
                     ## w | t,z components
                     for v in Wd:
-                        probs += np.sum(np.log(np.add.outer(self.tau + self.W[1:,v], np.arange(Wd[v]))), axis=1)
-                    probs -= np.sum(np.log(np.add.outer(np.sum(self.tau + self.W[1:], axis=1), np.arange(np.sum(list(Wd.values()))))), axis=1)
+                        probs += np.sum(np.log(np.add.outer(self.eta + self.w[1:,v], np.arange(Wd[v]))), axis=1)
+                    probs -= np.sum(np.log(np.add.outer(np.sum(self.eta + self.w[1:], axis=1), np.arange(np.sum(list(Wd.values()))))), axis=1)
                     ## z | t components
                     probs += np.sum(np.log(np.add.outer(self.alpha + self.Z, np.arange(Zd))), axis=1)
                     probs += np.sum(np.log(np.add.outer(self.alpha0 + self.M_star - self.Z, np.arange(np.sum(self.M[d]) - Zd))), axis=1)
                     probs -= np.sum(np.log(np.add.outer(self.alpha0 + self.alpha + self.M_star, np.arange(np.sum(self.M[d])))), axis=1)
                 else:
                     for v in Wd:
-                        probs += np.sum(np.log(np.add.outer(self.tau + self.W[:,v], np.arange(Wd[v]))), axis=1)
-                    probs -= np.sum(np.log(np.add.outer(np.sum(self.tau + self.W, axis=1), np.arange(np.sum(list(Wd.values()))))), axis=1)
+                        probs += np.sum(np.log(np.add.outer(self.eta + self.w[:,v], np.arange(Wd[v]))), axis=1)
+                    probs -= np.sum(np.log(np.add.outer(np.sum(self.eta + self.w, axis=1), np.arange(np.sum(list(Wd.values()))))), axis=1)
             # Transform the probabilities
             probs = np.exp(probs - logsumexp(probs))
             # Resample session-level topic
@@ -549,20 +549,20 @@ class topic_model:
             for v in Wd:
                 self.W[s_old + (1 if self.secondary_topic else 0),v] -= Wd[v]
             # Calculate allocation probabilities
-            probs = np.log(self.eta + self.S[td])
+            probs = np.log(self.tau + self.S[td])
             if self.secondary_topic:
                 ## w | s,z components
                 for v in Wd:
-                    probs += np.sum(np.log(np.add.outer(self.tau + self.W[1:,v], np.arange(Wd[v]))), axis=1)
-                probs -= np.sum(np.log(np.add.outer(np.sum(self.tau + self.W[1:], axis=1), np.arange(np.sum(list(Wd.values()))))), axis=1)
+                    probs += np.sum(np.log(np.add.outer(self.eta + self.w[1:,v], np.arange(Wd[v]))), axis=1)
+                probs -= np.sum(np.log(np.add.outer(np.sum(self.eta + self.w[1:], axis=1), np.arange(np.sum(list(Wd.values()))))), axis=1)
                 ## z | s components
                 probs += np.sum(np.log(np.add.outer(self.alpha + self.Z, np.arange(Zdj))), axis=1)
                 probs += np.sum(np.log(np.add.outer(self.alpha0 + self.M_star - self.Z, np.arange(self.M[d][j] - Zdj))), axis=1)
                 probs -= np.sum(np.log(np.add.outer(self.alpha0 + self.alpha + self.M_star, np.arange(self.M[d][j]))), axis=1)
             else:
                 for v in Wd:
-                    probs += np.sum(np.log(np.add.outer(self.tau + self.W[:,v], np.arange(Wd[v]))), axis=1)
-                probs -= np.sum(np.log(np.add.outer(np.sum(self.tau + self.W, axis=1), np.arange(np.sum(list(Wd.values()))))), axis=1)
+                    probs += np.sum(np.log(np.add.outer(self.eta + self.w[:,v], np.arange(Wd[v]))), axis=1)
+                probs -= np.sum(np.log(np.add.outer(np.sum(self.eta + self.w, axis=1), np.arange(np.sum(list(Wd.values()))))), axis=1)
             # Transform the probabilities
             probs = np.exp(probs - logsumexp(probs))
             # Resample command-level topic
@@ -607,8 +607,8 @@ class topic_model:
             self.W[(topic+1)*z_old,v] -= 1
             # Calculate allocation probabilities
             probs = np.zeros(2)
-            probs[1] = np.log(self.alpha + self.Z[topic]) + np.log(self.tau + self.W[topic+1,v]) - np.log(np.sum(self.tau + self.W[topic+1]))
-            probs[0] = np.log(self.alpha0 + self.M_star[topic] - 1 - self.Z[topic]) + np.log(self.tau + self.W[0,v]) - np.log(np.sum(self.tau + self.W[0]))
+            probs[1] = np.log(self.alpha + self.Z[topic]) + np.log(self.eta + self.w[topic+1,v]) - np.log(np.sum(self.eta + self.w[topic+1]))
+            probs[0] = np.log(self.alpha0 + self.M_star[topic] - 1 - self.Z[topic]) + np.log(self.eta + self.w[0,v]) - np.log(np.sum(self.eta + self.w[0]))
             probs = np.exp(probs - logsumexp(probs))
             # Resample z
             z_new = np.random.choice(range(2), p=probs)
@@ -740,7 +740,7 @@ class topic_model:
                         for j in self.w[d]:
                             M_ast_temp[0] += self.M[d][j]
                             Z_temp[0] += np.sum(self.z[d][j])
-                        for j in self.w[d_prime]:
+                        for j in self.tau + self.S[d_prime]:
                             M_ast_temp[1] += self.M[d_prime][j]
                             Z_temp[1] += np.sum(self.z[d_prime][j])
             # Caclulate proposal probability
@@ -756,7 +756,7 @@ class topic_model:
                         Wd = Counter()
                         if self.secondary_topic:
                             Zd = 0
-                        for j in self.w[doc]:
+                        for j in self.tau + self.S[doc]:
                             if self.secondary_topic:
                                 Zdj = self.z[doc][j]
                                 Wd += Counter(self.w[doc][j][Zdj == 1])
@@ -769,13 +769,13 @@ class topic_model:
                         probs = np.log(self.gamma + T_prop)
                         if self.command_level_topics:
                             for h in Sd:
-                                probs += np.sum(np.log(np.add.outer(self.eta + S_prop[:,h], np.arange(Sd[h]))), axis=1)
-                            probs -= np.sum(np.log(np.add.outer(np.sum(self.eta + S_prop, axis=1), np.arange(np.sum(list(Sd.values()))))), axis=1)               
+                                probs += np.sum(np.log(np.add.outer(self.tau + S_prop[:,h], np.arange(Sd[h]))), axis=1)
+                            probs -= np.sum(np.log(np.add.outer(np.sum(self.tau + S_prop, axis=1), np.arange(np.sum(list(Sd.values()))))), axis=1)               
                         else:
                             ## w | t,z components
                             for v in Wd:
-                                probs += np.sum(np.log(np.add.outer(self.tau + W_prop[:,v], np.arange(Wd[v]))), axis=1)
-                            probs -= np.sum(np.log(np.add.outer(np.sum(self.tau + W_prop, axis=1), np.arange(np.sum(list(Wd.values()))))), axis=1)
+                                probs += np.sum(np.log(np.add.outer(self.eta + W_prop[:,v], np.arange(Wd[v]))), axis=1)
+                            probs -= np.sum(np.log(np.add.outer(np.sum(self.eta + W_prop, axis=1), np.arange(np.sum(list(Wd.values()))))), axis=1)
                             if self.secondary_topic:
                                 ## z | t components
                                 probs += np.sum(np.log(np.add.outer(self.alpha + Z_prop, np.arange(Zd))), axis=1)
@@ -785,13 +785,13 @@ class topic_model:
                         probs = np.log(self.gamma + T_temp)
                         if self.command_level_topics:
                             for h in Sd:
-                                probs += np.sum(np.log(np.add.outer(self.eta + S_temp[:,h], np.arange(Sd[h]))), axis=1)
-                            probs -= np.sum(np.log(np.add.outer(np.sum(self.eta + S_temp, axis=1), np.arange(np.sum(list(Sd.values()))))), axis=1)               
+                                probs += np.sum(np.log(np.add.outer(self.tau + S_temp[:,h], np.arange(Sd[h]))), axis=1)
+                            probs -= np.sum(np.log(np.add.outer(np.sum(self.tau + S_temp, axis=1), np.arange(np.sum(list(Sd.values()))))), axis=1)               
                         else:
                             ## w | t,z components
                             for v in Wd:
-                                probs += np.sum(np.log(np.add.outer(self.tau + W_temp[:,v], np.arange(Wd[v]))), axis=1)
-                            probs -= np.sum(np.log(np.add.outer(np.sum(self.tau + W_temp, axis=1), np.arange(np.sum(list(Wd.values()))))), axis=1)
+                                probs += np.sum(np.log(np.add.outer(self.eta + W_temp[:,v], np.arange(Wd[v]))), axis=1)
+                            probs -= np.sum(np.log(np.add.outer(np.sum(self.eta + W_temp, axis=1), np.arange(np.sum(list(Wd.values()))))), axis=1)
                             if self.secondary_topic:
                                 ## z | t components
                                 probs += np.sum(np.log(np.add.outer(self.alpha + Z_temp, np.arange(Zd))), axis=1)
@@ -834,11 +834,11 @@ class topic_model:
             t_indices = np.array([t,t_ast])
             acceptance_ratio = np.sum(loggamma(self.gamma + T_prop)) - np.sum(loggamma(self.gamma + self.T[t_indices]))
             if self.command_level_topics:
-                acceptance_ratio += np.sum(loggamma(self.eta + S_prop)) - np.sum(loggamma(self.eta + self.S[t_indices,:]))
-                acceptance_ratio -= np.sum(loggamma(np.sum(self.eta + S_prop, axis=1))) - np.sum(loggamma(np.sum(self.eta + self.S[t_indices], axis=1)))
+                acceptance_ratio += np.sum(loggamma(self.tau + S_prop)) - np.sum(loggamma(self.tau + self.S[t_indices,:]))
+                acceptance_ratio -= np.sum(loggamma(np.sum(self.tau + S_prop, axis=1))) - np.sum(loggamma(np.sum(self.tau + self.S[t_indices], axis=1)))
             else:
-                acceptance_ratio += np.sum(loggamma(self.tau + W_prop)) - np.sum(loggamma(self.tau + self.W[t_indices + (1 if self.secondary_topic else 0)]))
-                acceptance_ratio -= np.sum(loggamma(np.sum(self.tau + W_prop, axis=1))) - np.sum(loggamma(np.sum(self.tau + self.W[t_indices + (1 if self.secondary_topic else 0)], axis=1)))
+                acceptance_ratio += np.sum(loggamma(self.eta + W_prop)) - np.sum(loggamma(self.eta + self.w[t_indices + (1 if self.secondary_topic else 0)]))
+                acceptance_ratio -= np.sum(loggamma(np.sum(self.eta + W_prop, axis=1))) - np.sum(loggamma(np.sum(self.eta + self.w[t_indices + (1 if self.secondary_topic else 0)], axis=1)))
                 if self.secondary_topic:
                     acceptance_ratio += np.sum(loggamma(self.alpha + Z_prop)) + np.sum(loggamma(self.alpha0 + M_ast_prop - Z_prop))
                     acceptance_ratio -= np.sum(loggamma(self.alpha + self.alpha0 + M_ast_prop))
@@ -1010,19 +1010,19 @@ class topic_model:
                             Wjd = Counter(self.w[doc][command])
                         # Calculate allocation probabilities
                         if split:
-                            probs = np.log(self.eta + S_prop[:,td])
+                            probs = np.log(self.tau + S_prop[:,td])
                             for v in Wjd:
-                                probs += np.sum(np.log(np.add.outer(self.tau + W_prop[:,v], np.arange(Wjd[v]))), axis=1)
-                            probs -= np.sum(np.log(np.add.outer(np.sum(self.tau + W_prop, axis=1), np.arange(np.sum(list(Wjd.values()))))), axis=1)
+                                probs += np.sum(np.log(np.add.outer(self.eta + W_prop[:,v], np.arange(Wjd[v]))), axis=1)
+                            probs -= np.sum(np.log(np.add.outer(np.sum(self.eta + W_prop, axis=1), np.arange(np.sum(list(Wjd.values()))))), axis=1)
                             if self.secondary_topic:
                                 probs += np.sum(np.log(np.add.outer(self.alpha + Z_prop, np.arange(Zjd))), axis=1)
                                 probs += np.sum(np.log(np.add.outer(self.alpha0 + M_ast_prop - Z_prop, np.arange(self.M[doc][command] - Zjd))), axis=1)
                                 probs -= np.sum(np.log(np.add.outer(self.alpha0 + self.alpha + M_ast_prop, np.arange(self.M[doc][command]))), axis=1)              
                         else:
-                            probs = np.log(self.eta + S_temp[:,td])
+                            probs = np.log(self.tau + S_temp[:,td])
                             for v in Wjd:
-                                probs += np.sum(np.log(np.add.outer(self.tau + W_temp[:,v], np.arange(Wjd[v]))), axis=1)
-                            probs -= np.sum(np.log(np.add.outer(np.sum(self.tau + W_temp, axis=1), np.arange(np.sum(list(Wjd.values()))))), axis=1)
+                                probs += np.sum(np.log(np.add.outer(self.eta + W_temp[:,v], np.arange(Wjd[v]))), axis=1)
+                            probs -= np.sum(np.log(np.add.outer(np.sum(self.eta + W_temp, axis=1), np.arange(np.sum(list(Wjd.values()))))), axis=1)
                             if self.secondary_topic:
                                 probs += np.sum(np.log(np.add.outer(self.alpha + Z_temp, np.arange(Zjd))), axis=1)
                                 probs += np.sum(np.log(np.add.outer(self.alpha0 + M_ast_temp - Z_temp, np.arange(self.M[doc][command] - Zjd))), axis=1)
@@ -1056,10 +1056,10 @@ class topic_model:
             s_indices = np.array([s,s_ast])
             acceptance_ratio = np.sum(loggamma(self.gamma + S_prop))
             acceptance_ratio -= np.sum(loggamma(self.gamma + self.S[:,s_indices]))
-            acceptance_ratio += np.sum(loggamma(self.tau + W_prop))
-            acceptance_ratio -= np.sum(loggamma(self.eta + self.W[s_indices + (1 if self.secondary_topic else 0)]))
+            acceptance_ratio += np.sum(loggamma(self.eta + W_prop))
+            acceptance_ratio -= np.sum(loggamma(self.eta + self.w[s_indices + (1 if self.secondary_topic else 0)]))
             acceptance_ratio -= np.sum(loggamma(np.sum(self.eta + W_prop, axis=1)))
-            acceptance_ratio += np.sum(loggamma(np.sum(self.eta + self.W[s_indices + (1 if self.secondary_topic else 0)], axis=1)))
+            acceptance_ratio += np.sum(loggamma(np.sum(self.eta + self.w[s_indices + (1 if self.secondary_topic else 0)], axis=1)))
             if self.secondary_topic:
                 acceptance_ratio += np.sum(loggamma(self.alpha + Z_prop)) + np.sum(loggamma(self.alpha0 + M_ast_prop - Z_prop))
                 acceptance_ratio -= np.sum(loggamma(self.alpha + self.alpha0 + M_ast_prop))
