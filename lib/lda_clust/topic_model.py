@@ -1,6 +1,6 @@
 #! /usr/bin/env python3
 # from base64 import encode
-# from encodings import utf_8
+from encodings import utf_8
 # import sys
 import numpy as np
 from collections import Counter
@@ -27,7 +27,8 @@ class topic_model:
 
     def __init__(self, W, K, fixed_K = True, H=0, fixed_H = True, V=0, fixed_V = True, 
                     secondary_topic = True, command_level_topics = True,
-                    gamma=1.0, tau=1.0, eta=1.0, alpha=1.0, alpha0=1.0):
+                    gamma=1.0, tau=1.0, eta=1.0, alpha=1.0, alpha0=1.0,
+                    lambda_gem=False, psi_gem=False, phi_gem=False):
         
         # Documents & sentences (sessions & commands) in python dictionary form
         self.w = W
@@ -44,6 +45,13 @@ class topic_model:
         if not isinstance(fixed_V, bool):
             raise TypeError('fixed_V must be True or False.')
         self.fixed_V = fixed_V
+        # GEM priors for Bayesian nonparametric inference
+        if not isinstance(lambda_gem, bool):
+            raise TypeError('lambda_gem must be True or False.')
+        self.lambda_gem = lambda_gem
+        if not isinstance(phi_gem, bool):
+            raise TypeError('phi_gem must be True or False.')
+        self.phi_gem = phi_gem
         # Prior parameters
         if isinstance(gamma, float) or isinstance(gamma, int):
             self.gamma = gamma
@@ -103,6 +111,12 @@ class topic_model:
                     raise ValueError('The prior parameters tau must be positive.')
             else:
                 raise TypeError('The prior parameter tau must be a float or integer.')
+        ## GEM prior for psi
+        if not isinstance(psi_gem, bool):
+            raise TypeError('psi_gem must be True or False.')
+        elif psi_gem and self.command_level_topics:
+            raise TypeError('psi_gem can only be set to True if command_level_topics is True.')
+        self.psi_gem = psi_gem
         # Check if the provided value for K is appropriate
         if not isinstance(K, int) or K < 2:
             raise ValueError('K must be an integer value larger or equal to 2.') 
@@ -453,7 +467,7 @@ class topic_model:
 
    ## Resample session-level topics
     def resample_session_topics(self, size=1, indices=None):
-        ## Optional input: subset - list of integers d
+        # Optional input: subset - list of integers in {0,1,...,D-1}
         if indices is None:
             indices = np.random.choice(self.D, size=size)
         # Keep in t_old self.t to check for changes afterwards
@@ -463,10 +477,24 @@ class topic_model:
             td_old = self.t[d]  
             # Remove counts
             self.T[td_old] -= 1
+            if self.lambda_gem:
+                del_told = (self.T[td_old] == 0)
+            if self.lambda_gem and del_told:
+                self.K -= 1
+                self.T = np.delete(self.T, td_old)
+                self.t[self.t >= td_old] -= 1
+            if self.lambda_gem:
+                self.T = np.append(self.T, 0)
             if self.command_level_topics:
                 Sd = Counter(self.s[d])
                 for h in Sd:
                     self.S[td_old,h] -= Sd[h]
+                if self.lambda_gem and del_told:
+                    if np.sum(self.S[td_old]) != 0:
+                        raise ValueError('Sum of S must be 0.]')
+                    self.S = np.delete(self.S, td_old, axis=0)
+                if self.lambda_gem:
+                    self.S = np.append(self.S, np.zeros((1,self.H)), axis=0)
             else:
                 Wd = Counter()
                 if self.secondary_topic:
@@ -483,30 +511,57 @@ class topic_model:
                         Wd += Counter(self.w[d][j])
                 for v in Wd:
                     self.W[td_old + (1 if self.secondary_topic else 0),v] -= Wd[v]
+                if self.lambda_gem and del_told:
+                    if np.sum(self.W[td_old + (1 if self.secondary_topic else 0)]) != 0:
+                        raise ValueError('Sum of W must be 0.')
+                    self.W = np.delete(self.W, td_old + (1 if self.secondary_topic else 0), axis=0)
+                if self.lambda_gem:
+                    self.W = np.append(self.W, np.zeros((1,self.V)), axis=0)
             # Calculate allocation probabilities
-            probs = np.log(self.gamma + self.T)
+            if self.lambda_gem:
+                probs = np.log([self.gamma if t == 0 else t for t in self.T])
+            else:
+                probs = np.log(self.gamma + self.T)
             if self.command_level_topics:
-                for h in Sd:
-                    probs += np.sum(np.log(np.add.outer(self.tau + self.S[:,h], np.arange(Sd[h]))), axis=1)
-                probs -= np.sum(np.log(np.add.outer(np.sum(self.tau + self.S, axis=1), np.arange(np.sum(list(Sd.values()))))), axis=1)               
+                if self.psi_gem:
+                    for h in Sd:
+                        probs += np.append(np.log([self.tau if s == 0 else s for s in self.S[:,h]]), np.log(self.tau))
+                        probs += np.append(np.sum(np.log(np.add.outer(self.S[:,h], np.arange(1,Sd[h]))), axis=1), 0)
+                    probs -= np.sum(np.log(np.add.outer(self.tau + np.sum(self.S, axis=1), np.arange(np.sum(list(Sd.values()))))), axis=1)    
+                else:
+                    for h in Sd:
+                        probs += np.sum(np.log(np.add.outer(self.tau + self.S[:,h], np.arange(Sd[h]))), axis=1)
+                    probs -= np.sum(np.log(np.add.outer(np.sum(self.tau + self.S, axis=1), np.arange(np.sum(list(Sd.values()))))), axis=1)               
             else:
                 if self.secondary_topic:
                     ## w | t,z components
-                    for v in Wd:
-                        probs += np.sum(np.log(np.add.outer(self.eta + self.W[1:,v], np.arange(Wd[v]))), axis=1)
-                    probs -= np.sum(np.log(np.add.outer(np.sum(self.eta + self.W[1:], axis=1), np.arange(np.sum(list(Wd.values()))))), axis=1)
+                    if self.phi_gem:
+                        for v in Wd:
+                            probs += np.log([self.eta if w == 0 else w for w in self.W[1:,v]])
+                            probs += np.sum(np.log(np.add.outer(self.W[1:,v], np.arange(1,Wd[v]))), axis=1)
+                        probs -= np.sum(np.log(np.add.outer(self.eta + np.sum(self.W[1:], axis=1), np.arange(np.sum(list(Wd.values()))))), axis=1)
+                    else:
+                        for v in Wd:
+                            probs += np.sum(np.log(np.add.outer(self.eta + self.W[1:,v], np.arange(Wd[v]))), axis=1)
+                        probs -= np.sum(np.log(np.add.outer(np.sum(self.eta + self.W[1:], axis=1), np.arange(np.sum(list(Wd.values()))))), axis=1)
                     ## z | t components
                     probs += np.sum(np.log(np.add.outer(self.alpha + self.Z, np.arange(Zd))), axis=1)
                     probs += np.sum(np.log(np.add.outer(self.alpha0 + self.M_star - self.Z, np.arange(np.sum(self.M[d]) - Zd))), axis=1)
                     probs -= np.sum(np.log(np.add.outer(self.alpha0 + self.alpha + self.M_star, np.arange(np.sum(self.M[d])))), axis=1)
                 else:
-                    for v in Wd:
-                        probs += np.sum(np.log(np.add.outer(self.eta + self.W[:,v], np.arange(Wd[v]))), axis=1)
-                    probs -= np.sum(np.log(np.add.outer(np.sum(self.eta + self.W, axis=1), np.arange(np.sum(list(Wd.values()))))), axis=1)
+                    if self.phi_gem:
+                        for v in Wd:
+                            probs += np.log([self.eta if w == 0 else w for w in self.W[:,v]])
+                            probs += np.sum(np.log(np.add.outer(self.W[:,v], np.arange(1,Wd[v]))), axis=1)
+                        probs -= np.sum(np.log(np.add.outer(self.eta + np.sum(self.W, axis=1), np.arange(np.sum(list(Wd.values()))))), axis=1)                        
+                    else:
+                        for v in Wd:
+                            probs += np.sum(np.log(np.add.outer(self.eta + self.W[:,v], np.arange(Wd[v]))), axis=1)
+                        probs -= np.sum(np.log(np.add.outer(np.sum(self.eta + self.W, axis=1), np.arange(np.sum(list(Wd.values()))))), axis=1)
             # Transform the probabilities
             probs = np.exp(probs - logsumexp(probs))
             # Resample session-level topic
-            td_new = np.random.choice(self.K, p=probs)
+            td_new = np.random.choice(len(probs), p=probs)
             self.t[d] = td_new
             # Update counts
             self.T[td_new] += 1
@@ -519,9 +574,18 @@ class topic_model:
                 if self.secondary_topic:
                     self.M_star[td_new] += np.sum(self.M[d])
                     self.Z[td_new] += Zd
-        # Check if self.t changed , and count +1 for the change in counter
-        if (t_old==self.t).all():
-            self.change_counter_t+=1
+            if self.lambda_gem:
+                if td_new == self.K:
+                    self.K += 1
+                else:
+                    self.T = np.delete(self.T, -1)
+                    if self.command_level_topics:
+                        self.S = np.delete(self.S, -1, axis=0)
+                    else:
+                        self.W = np.delete(self.W, -1, axis=0)
+        # Check if t changed, and count +1 for the change in counter
+        if np.any(t_old != self.t):
+            self.change_counter_t += 1
 
     ## Resample session-level topics
     def resample_command_topics(self, size=1, indices=None):
@@ -621,7 +685,6 @@ class topic_model:
                 entry_count+=1
                 #self.change_counter_z[d]+=1
                 self.change_counter_z+=1
-
 
     ## Split-merge move for session-level topics
     def split_merge_session(self, random_allocation=False):
@@ -1139,7 +1202,6 @@ class topic_model:
             #change_z_out={}
             #for d in range(self.D):
             #    change_z_out[d] = np.zeros(Q,dtype=int)
-        
         for it in range(iterations+burnin):
             # Sample move
             move = np.random.choice(moves, p=moves_probs)
@@ -1203,7 +1265,6 @@ class topic_model:
                     #for d in range(self.D):
                     #    change_z_out[d][q]=np.copy(self.change_counter_z[d])
                     #self.change_counter_z = dict.fromkeys(range(self.D),0)
-
         ## Output
         out = {}
         if calculate_ll:
