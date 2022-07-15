@@ -9,7 +9,7 @@ def normalise(x):
 ## Simulate data from the topic model
 def simulate_data(D, K=0, fixed_K = True, H=0, fixed_H = True, V=0, fixed_V = True, 
                     N_num=0, fixed_N = False, M_num=0, fixed_M = False, psi_dic=0, fixed_psi = False,
-                    secondary_topic = False, command_level_topics = False, phi_last=True,
+                    secondary_topic = False, shared_Z = False, command_level_topics = False, phi_last=True,
                     gamma=1.0, eta=1.0, alpha=1.0, alpha0=1.0, tau=1.0,
                     csi=1, omega=10, stick_truncation=100, seed=111):
     # Check if the provided value of seed is appropriate
@@ -143,10 +143,13 @@ def simulate_data(D, K=0, fixed_K = True, H=0, fixed_H = True, V=0, fixed_V = Tr
             s[d] = np.random.choice(H if fixed_H else stick_truncation, size=N[d], p=psi[t[d]])
     # Sample theta for secondary topics
     if secondary_topic:
-        if not command_level_topics:
-            theta = np.random.beta(a=alpha, b=alpha0, size=K if fixed_K else stick_truncation)
+        if not shared_Z: 
+            theta = np.random.beta(a=alpha, b=alpha0, size=D)        
         else:
-            theta = np.random.beta(a=alpha, b=alpha0, size=H if fixed_H else stick_truncation)
+            if not command_level_topics:
+                theta = np.random.beta(a=alpha, b=alpha0, size=K if fixed_K else stick_truncation)
+            else:
+                theta = np.random.beta(a=alpha, b=alpha0, size=H if fixed_H else stick_truncation)
     # Sample the words
     w = {}
     if secondary_topic:
@@ -162,9 +165,9 @@ def simulate_data(D, K=0, fixed_K = True, H=0, fixed_H = True, V=0, fixed_V = Tr
                 w[d][j] = np.random.choice(V if fixed_V else stick_truncation, size=M[d][j], p=phi[s[d][j] if command_level_topics else t[d]])
             else:
                 if command_level_topics:
-                    z[d][j] = np.random.choice(2, size=M[d][j], p=[1-theta[s[d][j]],theta[s[d][j]]])
+                    z[d][j] = np.random.choice(2, size=M[d][j], p=[1-theta[s[d][j] if shared_Z else d], theta[s[d][j] if shared_Z else d]])
                 else:
-                    z[d][j] = np.random.choice(2, size=M[d][j], p=[1-theta[t[d]],theta[t[d]]])
+                    z[d][j] = np.random.choice(2, size=M[d][j], p=[1-theta[t[d] if shared_Z else d], theta[t[d] if shared_Z else d]])
                 w[d][j][z[d][j] == 0] = np.random.choice(V if fixed_V else stick_truncation, size=np.sum(1-z[d][j]), p=phi[list(phi.keys())[-1]] if phi_last else phi[0])
                 w[d][j][z[d][j] == 1] = np.random.choice(V if fixed_V else stick_truncation, size=np.sum(z[d][j]), p=phi[(s[d][j] if command_level_topics else t[d]) + (0 if phi_last else 1)])     
     # Define output
@@ -173,6 +176,7 @@ def simulate_data(D, K=0, fixed_K = True, H=0, fixed_H = True, V=0, fixed_V = Tr
     out['N'] = N
     out['M'] = M
     out['w'] = w
+    out['lambda'] = lam
     out['phi'] = phi
     if command_level_topics:
         out['s'] = s

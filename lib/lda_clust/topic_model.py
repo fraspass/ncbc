@@ -26,7 +26,7 @@ class topic_model:
     # Required input: W - dictionary of dictionaries containing the words (as consecutive integers starting at 0)
 
     def __init__(self, W, K, fixed_K = True, H=0, fixed_H = True, V=0, fixed_V = True, 
-                    secondary_topic = True, command_level_topics = True,
+                    secondary_topic = True, shared_Z = False, command_level_topics = True,
                     gamma=1.0, tau=1.0, eta=1.0, alpha=1.0, alpha0=1.0,
                     lambda_gem=False, psi_gem=False, phi_gem=False):
         
@@ -97,6 +97,12 @@ class topic_model:
                     raise TypeError('The prior parameter alpha0 must be a float or integer.')
             else: 
                 raise TypeError('The prior parameter alpha must be a float or integer.')
+        if not isinstance(shared_Z, bool):
+            raise TypeError('shared_Z must be True or False.')
+        else:
+            self.shared_Z = False
+            if shared_Z and self.secondary_topic:
+                self.shared_Z = True
         # Command-level topics
         if not isinstance(command_level_topics, bool):
             raise ValueError('command_level_topics must be True or False.')
@@ -177,11 +183,11 @@ class topic_model:
         # Primary-secondary topic indicators
         if self.secondary_topic:
             if self.command_level_topics:
-                self.M_star = np.zeros(shape=self.H, dtype=int)
-                self.Z = np.zeros(shape=self.H, dtype=int)
+                self.M_star = np.zeros(shape=self.H if self.shared_Z else self.D, dtype=int)
+                self.Z = np.zeros(shape=self.H if self.shared_Z else self.D, dtype=int)
             else:
-                self.M_star = np.zeros(shape=self.K, dtype=int)
-                self.Z = np.zeros(shape=self.K, dtype=int)
+                self.M_star = np.zeros(shape=self.K if self.shared_Z else self.D, dtype=int)
+                self.Z = np.zeros(shape=self.K if self.shared_Z else self.D, dtype=int)
         # Initialise quantities 
         Q = Counter(self.t)
         for topic in Q:
@@ -193,8 +199,8 @@ class topic_model:
                     sjd = self.s[doc][j]
                     self.S[td,sjd] += 1
                     if self.secondary_topic:
-                        self.M_star[sjd] += self.M[doc][j] 
-                        self.Z[sjd] += np.sum(self.z[doc][j])
+                        self.M_star[sjd if self.shared_Z else doc] += self.M[doc][j] 
+                        self.Z[sjd if self.shared_Z else doc] += np.sum(self.z[doc][j])
                         # Primary topics
                         Wjd = Counter(self.w[doc][j][self.z[doc][j] == 1])
                         for v in Wjd:
@@ -210,8 +216,8 @@ class topic_model:
             else:
                 for j in self.w[doc]:
                     if self.secondary_topic:
-                        self.M_star[td] += self.M[doc][j] 
-                        self.Z[td] += np.sum(self.z[doc][j])
+                        self.M_star[td if self.shared_Z else doc] += self.M[doc][j] 
+                        self.Z[td if self.shared_Z else doc] += np.sum(self.z[doc][j])
                         # Primary topics
                         Wjd = Counter(self.w[doc][j][self.z[doc][j] == 1])
                         for v in Wjd:
@@ -461,20 +467,20 @@ class topic_model:
         for d in self.w:
             self.z[d] = {}
             for j in self.w[d]:
-                self.z[d][j] = np.random.choice(2,size=self.M[d][j],p=[0.1,0.9])
+                self.z[d][j] = np.random.choice(2,size=self.M[d][j],p=[0.001,0.999])
         # Initialise counts
         self.init_counts()     
 
    ## Resample session-level topics
-    def resample_session_topics(self, size=1, indices=None):
+    def resample_session_topics(self, size=1, indices=None, printout=False):
         # Optional input: subset - list of integers in {0,1,...,D-1}
         if indices is None:
             indices = np.random.choice(self.D, size=size)
         # Keep in t_old self.t to check for changes afterwards
-        t_old=np.copy(self.t)
+        t_old = np.copy(self.t)
         # Resample each document
         for d in indices:
-            td_old = self.t[d]  
+            td_old = self.t[d]
             # Remove counts
             self.T[td_old] -= 1
             if self.lambda_gem:
@@ -499,14 +505,16 @@ class topic_model:
                 Wd = Counter()
                 if self.secondary_topic:
                     Zd = 0
-                    self.M_star[td_old] -= np.sum(self.M[d])
+                    if self.shared_Z:
+                        self.M_star[td_old] -= np.sum(self.M[d])
                 for j in self.w[d]:
                     if self.secondary_topic:
                         Zdj = self.z[d][j]
                         Wd += Counter(self.w[d][j][Zdj == 1])
-                        Z_partial = np.sum(Zdj)
-                        self.Z[td_old] -= Z_partial
-                        Zd += Z_partial
+                        if self.shared_Z:
+                            Z_partial = np.sum(Zdj)
+                            self.Z[td_old] -= Z_partial
+                            Zd += Z_partial
                     else:
                         Wd += Counter(self.w[d][j])
                 for v in Wd:
@@ -515,8 +523,16 @@ class topic_model:
                     if np.sum(self.W[td_old + (1 if self.secondary_topic else 0)]) != 0:
                         raise ValueError('Sum of W must be 0.')
                     self.W = np.delete(self.W, td_old + (1 if self.secondary_topic else 0), axis=0)
+                    if self.secondary_topic and self.shared_Z:
+                        if self.M_star[td_old] != 0 or self.Z[td_old] != 0:
+                            raise ValueError('M_star and Z must be 0.')
+                        self.M_star = np.delete(self.M_star, td_old)
+                        self.Z = np.delete(self.Z, td_old)
                 if self.lambda_gem:
                     self.W = np.append(self.W, np.zeros((1,self.V)), axis=0)
+                    if self.secondary_topic and self.shared_Z:
+                        self.M_star = np.append(self.M_star, 0)
+                        self.Z = np.append(self.Z, 0)
             # Calculate allocation probabilities
             if self.lambda_gem:
                 probs = np.log([self.gamma if t == 0 else t for t in self.T])
@@ -526,7 +542,7 @@ class topic_model:
                 if self.psi_gem:
                     for h in Sd:
                         probs += np.append(np.log([self.tau if s == 0 else s for s in self.S[:,h]]), np.log(self.tau))
-                        probs += np.append(np.sum(np.log(np.add.outer(self.S[:,h], np.arange(1,Sd[h]))), axis=1), 0)
+                        probs += np.append(np.sum(np.log(np.add.outer(self.S[:,h], np.arange(1, Sd[h]))), axis=1), 0)
                     probs -= np.sum(np.log(np.add.outer(self.tau + np.sum(self.S, axis=1), np.arange(np.sum(list(Sd.values()))))), axis=1)    
                 else:
                     for h in Sd:
@@ -544,10 +560,11 @@ class topic_model:
                         for v in Wd:
                             probs += np.sum(np.log(np.add.outer(self.eta + self.W[1:,v], np.arange(Wd[v]))), axis=1)
                         probs -= np.sum(np.log(np.add.outer(np.sum(self.eta + self.W[1:], axis=1), np.arange(np.sum(list(Wd.values()))))), axis=1)
-                    ## z | t components
-                    probs += np.sum(np.log(np.add.outer(self.alpha + self.Z, np.arange(Zd))), axis=1)
-                    probs += np.sum(np.log(np.add.outer(self.alpha0 + self.M_star - self.Z, np.arange(np.sum(self.M[d]) - Zd))), axis=1)
-                    probs -= np.sum(np.log(np.add.outer(self.alpha0 + self.alpha + self.M_star, np.arange(np.sum(self.M[d])))), axis=1)
+                    if self.shared_Z:
+                        ## z | t components
+                        probs += np.sum(np.log(np.add.outer(self.alpha + self.Z, np.arange(Zd))), axis=1)
+                        probs += np.sum(np.log(np.add.outer(self.alpha0 + self.M_star - self.Z, np.arange(np.sum(self.M[d]) - Zd))), axis=1)
+                        probs -= np.sum(np.log(np.add.outer(self.alpha0 + self.alpha + self.M_star, np.arange(np.sum(self.M[d])))), axis=1)
                 else:
                     if self.phi_gem:
                         for v in Wd:
@@ -562,6 +579,8 @@ class topic_model:
             probs = np.exp(probs - logsumexp(probs))
             # Resample session-level topic
             td_new = np.random.choice(len(probs), p=probs)
+            if printout: 
+                print(td_old, probs, td_new)
             self.t[d] = td_new
             # Update counts
             self.T[td_new] += 1
@@ -571,7 +590,7 @@ class topic_model:
             else:
                 for v in Wd:
                     self.W[td_new + (1 if self.secondary_topic else 0),v] += Wd[v]
-                if self.secondary_topic:
+                if self.secondary_topic and self.shared_Z:
                     self.M_star[td_new] += np.sum(self.M[d])
                     self.Z[td_new] += Zd
             if self.lambda_gem:
@@ -583,6 +602,9 @@ class topic_model:
                         self.S = np.delete(self.S, -1, axis=0)
                     else:
                         self.W = np.delete(self.W, -1, axis=0)
+                        if self.secondary_topic and self.shared_Z:
+                            self.M_star = np.delete(self.M_star, -1)
+                            self.Z = np.delete(self.Z, -1)
         # Check if t changed, and count +1 for the change in counter
         if np.any(t_old != self.t):
             self.change_counter_t += 1
@@ -602,31 +624,70 @@ class topic_model:
             td = self.t[d]
             s_old = int(self.s[d][j])
             self.S[td,s_old] -= 1
+            if self.phi_gem:
+                del_sold = (np.sum(self.S[:,s_old]) == 0)
+                if del_sold:
+                    self.S = np.delete(self.S, s_old, axis=1)
+                    self.H -= 1
+                    for doc in self.s:
+                        self.s[doc][self.s[doc] >= s_old] -= 1
+                self.S = np.append(self.S, np.zeros((1,self.K)), axis=1)
             if self.secondary_topic:
-                self.M_star[s_old] -= self.M[d][j]
                 Zdj = self.z[d][j]
                 Wd = Counter(self.w[d][j][Zdj == 1])
-                Zdj = int(np.sum(Zdj))
-                self.Z[s_old] -= Zdj
+                if self.shared_Z:
+                    self.M_star[s_old] -= self.M[d][j]
+                    Zdj = int(np.sum(Zdj))
+                    self.Z[s_old] -= Zdj
             else:
                 Wd = Counter(self.w[d][j])
             for v in Wd:
                 self.W[s_old + (1 if self.secondary_topic else 0),v] -= Wd[v]
+            if self.psi_gem:
+                if del_sold:
+                    if np.sum(self.W[s_old + (1 if self.secondary_topic else 0)]) != 0:
+                        raise ValueError('Sum of W must be 0.')
+                    self.W = np.delete(self.W, s_old + (1 if self.secondary_topic else 0), axis=0)
+                    if self.secondary_topic and self.shared_Z:
+                        if self.M_star[s_old] != 0 or self.Z[s_old] != 0:
+                            raise ValueError('M_star and Z must be 0.')
+                    self.M_star = np.delete(self.M_star, s_old)
+                    self.Z = np.delete(self.Z, s_old)
+                self.W = np.append(self.W, np.zeros((1,self.V)), axis=0)
+                if self.secondary_topic and self.shared_Z:
+                    self.M_star = np.append(self.M_star, 0)
+                    self.Z = np.append(self.Z, 0)
             # Calculate allocation probabilities
-            probs = np.log(self.tau + self.S[td])
+            if self.psi_gem:
+                probs = np.log([self.tau if s == 0 else s for s in self.S[td]])
+            else:
+                probs = np.log(self.tau + self.S[td])
             if self.secondary_topic:
                 ## w | s,z components
-                for v in Wd:
-                    probs += np.sum(np.log(np.add.outer(self.eta + self.W[1:,v], np.arange(Wd[v]))), axis=1)
-                probs -= np.sum(np.log(np.add.outer(np.sum(self.eta + self.W[1:], axis=1), np.arange(np.sum(list(Wd.values()))))), axis=1)
-                ## z | s components
-                probs += np.sum(np.log(np.add.outer(self.alpha + self.Z, np.arange(Zdj))), axis=1)
-                probs += np.sum(np.log(np.add.outer(self.alpha0 + self.M_star - self.Z, np.arange(self.M[d][j] - Zdj))), axis=1)
-                probs -= np.sum(np.log(np.add.outer(self.alpha0 + self.alpha + self.M_star, np.arange(self.M[d][j]))), axis=1)
+                if self.phi_gem:
+                    for v in Wd:
+                        probs += np.log([self.eta if w == 0 else w for w in self.W[1:,v]])
+                        probs += np.sum(np.log(np.add.outer(self.W[1:,v], np.arange(1,Wd[v]))), axis=1)
+                    probs -= np.sum(np.log(np.add.outer(self.eta + np.sum(self.W[1:], axis=1), np.arange(np.sum(list(Wd.values()))))), axis=1)
+                else:
+                    for v in Wd:
+                        probs += np.sum(np.log(np.add.outer(self.eta + self.W[1:,v], np.arange(Wd[v]))), axis=1)
+                    probs -= np.sum(np.log(np.add.outer(np.sum(self.eta + self.W[1:], axis=1), np.arange(np.sum(list(Wd.values()))))), axis=1)
+                if self.shared_Z:
+                    ## z | s components
+                    probs += np.sum(np.log(np.add.outer(self.alpha + self.Z, np.arange(Zdj))), axis=1)
+                    probs += np.sum(np.log(np.add.outer(self.alpha0 + self.M_star - self.Z, np.arange(self.M[d][j] - Zdj))), axis=1)
+                    probs -= np.sum(np.log(np.add.outer(self.alpha0 + self.alpha + self.M_star, np.arange(self.M[d][j]))), axis=1)
             else:
-                for v in Wd:
-                    probs += np.sum(np.log(np.add.outer(self.eta + self.W[:,v], np.arange(Wd[v]))), axis=1)
-                probs -= np.sum(np.log(np.add.outer(np.sum(self.eta + self.W, axis=1), np.arange(np.sum(list(Wd.values()))))), axis=1)
+                if self.phi_gem:
+                    for v in Wd:
+                        probs += np.log([self.eta if w == 0 else w for w in self.W[:,v]])
+                        probs += np.sum(np.log(np.add.outer(self.W[:,v], np.arange(1,Wd[v]))), axis=1)
+                    probs -= np.sum(np.log(np.add.outer(self.eta + np.sum(self.W, axis=1), np.arange(np.sum(list(Wd.values()))))), axis=1) 
+                else:   
+                    for v in Wd:
+                        probs += np.sum(np.log(np.add.outer(self.eta + self.W[:,v], np.arange(Wd[v]))), axis=1)
+                    probs -= np.sum(np.log(np.add.outer(np.sum(self.eta + self.W, axis=1), np.arange(np.sum(list(Wd.values()))))), axis=1)
             # Transform the probabilities
             probs = np.exp(probs - logsumexp(probs))
             # Resample command-level topic
@@ -636,9 +697,18 @@ class topic_model:
             self.S[td,s_new] += 1
             for v in Wd:
                 self.W[s_new + (1 if self.secondary_topic else 0),v] += Wd[v]
-            if self.secondary_topic:
+            if self.secondary_topic and self.shared_Z:
                 self.M_star[s_new] += self.M[d][j]
                 self.Z[s_new] += Zdj
+            if self.psi_gem:
+                if s_new == self.H:
+                    self.H += 1
+                else:
+                    self.S = np.delete(self.S, -1, axis=1)
+                    self.W = np.delete(self.W, -1, axis=0)
+                    if self.secondary_topic and self.shared_Z:
+                        self.M_star = np.delete(self.M_star, -1)
+                        self.Z = np.delete(self.Z, -1)
             # Keep counter for changed commands in docs
             if (s_old!=s_new) and (entry_count < 1):
                 entry_count += 1
@@ -667,19 +737,25 @@ class topic_model:
                 topic = self.s[d][j]
             else:
                 topic = self.t[d]
-            self.Z[topic] -= z_old
+            ## Index for Z
+            topicz = np.copy(topic if self.shared_Z else d)
+            self.Z[topicz] -= z_old
             self.W[(topic+1)*z_old,v] -= 1
             # Calculate allocation probabilities
             probs = np.zeros(2)
-            probs[1] = np.log(self.alpha + self.Z[topic]) + np.log(self.eta + self.W[topic+1,v]) - np.log(np.sum(self.eta + self.W[topic+1]))
-            probs[0] = np.log(self.alpha0 + self.M_star[topic] - 1 - self.Z[topic]) + np.log(self.eta + self.W[0,v]) - np.log(np.sum(self.eta + self.W[0]))
+            if self.phi_gem:
+                probs[1] = np.log(self.alpha + self.Z[topicz]) + np.log(self.eta if self.W[topic+1,v] == 0 else self.W[topic+1,v]) - np.log(np.sum(self.eta + self.W[topic+1]))
+                probs[0] = np.log(self.alpha0 + self.M_star[topicz] - 1 - self.Z[topicz]) + np.log(self.eta if self.W[0,v] == 0 else self.W[0,v]) - np.log(np.sum(self.eta + self.W[0]))
+            else:
+                probs[1] = np.log(self.alpha + self.Z[topicz]) + np.log(self.eta + self.W[topic+1,v]) - np.log(np.sum(self.eta + self.W[topic+1]))
+                probs[0] = np.log(self.alpha0 + self.M_star[topicz] - 1 - self.Z[topicz]) + np.log(self.eta + self.W[0,v]) - np.log(np.sum(self.eta + self.W[0]))
             probs = np.exp(probs - logsumexp(probs))
             # Resample z
             z_new = np.random.choice(range(2), p=probs)
             self.z[d][j][i] = z_new
             # Update counts
-            self.Z[topic] += z_new
-            self.W[(topic+1)*z_new,v] += 1
+            self.Z[topicz] += z_new
+            self.W[(topic + 1) * z_new, v] += 1
             # Counter for z changes in docs
             if (z_old!=z_new) and (entry_count < 1):
                 entry_count+=1
@@ -796,14 +872,14 @@ class topic_model:
                         Q = Counter(self.w[d_prime][j] if not self.secondary_topic else self.w[d_prime][j][self.z[d_prime][j] == 1])
                         for v in Q:
                             W_temp[1,v] += Q[v] 
-                    if self.secondary_topic:
+                    if self.secondary_topic and self.shared_Z:
                         M_ast_prop = np.zeros(2); M_ast_prop[0] = self.M_star[t] + self.M_star[t_ast]
                         Z_prop = np.zeros(2); Z_prop[0] = self.Z[t] + self.Z[t_ast]
                         M_ast_temp = np.zeros(2); Z_temp = np.zeros(2)
                         for j in self.w[d]:
                             M_ast_temp[0] += self.M[d][j]
                             Z_temp[0] += np.sum(self.z[d][j])
-                        for j in self.tau + self.S[d_prime]:
+                        for j in self.w[d_prime]: ##self.tau + self.S[d_prime]:
                             M_ast_temp[1] += self.M[d_prime][j]
                             Z_temp[1] += np.sum(self.z[d_prime][j])
             # Caclulate proposal probability
@@ -819,7 +895,7 @@ class topic_model:
                         Wd = Counter()
                         if self.secondary_topic:
                             Zd = 0
-                        for j in self.tau + self.S[doc]:
+                        for j in self.w[doc]: ## self.tau + self.S[doc]:
                             if self.secondary_topic:
                                 Zdj = self.z[doc][j]
                                 Wd += Counter(self.w[doc][j][Zdj == 1])
@@ -839,7 +915,7 @@ class topic_model:
                             for v in Wd:
                                 probs += np.sum(np.log(np.add.outer(self.eta + W_prop[:,v], np.arange(Wd[v]))), axis=1)
                             probs -= np.sum(np.log(np.add.outer(np.sum(self.eta + W_prop, axis=1), np.arange(np.sum(list(Wd.values()))))), axis=1)
-                            if self.secondary_topic:
+                            if self.secondary_topic and self.shared_Z:
                                 ## z | t components
                                 probs += np.sum(np.log(np.add.outer(self.alpha + Z_prop, np.arange(Zd))), axis=1)
                                 probs += np.sum(np.log(np.add.outer(self.alpha0 + M_ast_prop - Z_prop, np.arange(np.sum(self.M[doc]) - Zd))), axis=1)
@@ -855,7 +931,7 @@ class topic_model:
                             for v in Wd:
                                 probs += np.sum(np.log(np.add.outer(self.eta + W_temp[:,v], np.arange(Wd[v]))), axis=1)
                             probs -= np.sum(np.log(np.add.outer(np.sum(self.eta + W_temp, axis=1), np.arange(np.sum(list(Wd.values()))))), axis=1)
-                            if self.secondary_topic:
+                            if self.secondary_topic and self.shared_Z:
                                 ## z | t components
                                 probs += np.sum(np.log(np.add.outer(self.alpha + Z_temp, np.arange(Zd))), axis=1)
                                 probs += np.sum(np.log(np.add.outer(self.alpha0 + M_ast_temp - Z_temp, np.arange(np.sum(self.M[doc]) - Zd))), axis=1)
@@ -877,7 +953,7 @@ class topic_model:
                         else:
                             for v in Wd:
                                 W_prop[td_new,v] += Wd[v]
-                            if self.secondary_topic:
+                            if self.secondary_topic and self.shared_Z:
                                 M_ast_prop[td_new] += np.sum(self.M[doc])
                                 Z_prop[td_new] += Zd
                     else:
@@ -888,7 +964,7 @@ class topic_model:
                         else:
                             for v in Wd:
                                 W_temp[td_new,v] += Wd[v]
-                            if self.secondary_topic:
+                            if self.secondary_topic and self.shared_Z:
                                 M_ast_temp[td_new] += np.sum(self.M[doc])
                                 Z_temp[td_new] += Zd
             else:
@@ -902,7 +978,7 @@ class topic_model:
             else:
                 acceptance_ratio += np.sum(loggamma(self.eta + W_prop)) - np.sum(loggamma(self.eta + self.W[t_indices + (1 if self.secondary_topic else 0)]))
                 acceptance_ratio -= np.sum(loggamma(np.sum(self.eta + W_prop, axis=1))) - np.sum(loggamma(np.sum(self.eta + self.W[t_indices + (1 if self.secondary_topic else 0)], axis=1)))
-                if self.secondary_topic:
+                if self.secondary_topic and self.shared_Z:
                     acceptance_ratio += np.sum(loggamma(self.alpha + Z_prop)) + np.sum(loggamma(self.alpha0 + M_ast_prop - Z_prop))
                     acceptance_ratio -= np.sum(loggamma(self.alpha + self.alpha0 + M_ast_prop))
                     acceptance_ratio -= np.sum(loggamma(self.alpha + self.Z[t_indices])) + np.sum(loggamma(self.alpha0 + self.M_star[t_indices] - self.Z[t_indices]))
@@ -930,7 +1006,7 @@ class topic_model:
                     self.S[t] = S_prop[0]; self.S[t_ast] = S_prop[1]
                 else:
                     self.W[t + (1 if self.secondary_topic else 0)] = W_prop[0]; self.W[t_ast + (1 if self.secondary_topic else 0)] = W_prop[1] 
-                    if self.secondary_topic:
+                    if self.secondary_topic and self.shared_Z:
                         self.M_star[t] = M_ast_prop[0]; self.M_star[t_ast] = M_ast_prop[1]
                         self.Z[t] = Z_prop[0]; self.Z[t_ast] = Z_prop[1]
 
@@ -985,7 +1061,7 @@ class topic_model:
                 s_prop = {}
                 W_prop = np.zeros((2,self.V), dtype=int)
                 S_prop = np.zeros((2,self.K))
-                if self.secondary_topic:
+                if self.secondary_topic and self.shared_Z:
                     M_ast_prop = np.zeros(2)
                     Z_prop = np.zeros(2)
                 # Add starting commands
@@ -995,13 +1071,13 @@ class topic_model:
                 Wjd = Counter(self.w[d][j])
                 for v in Wjd:
                     W_prop[0,v] += Wjd[v]
-                if self.secondary_topic:
+                if self.secondary_topic and self.shared_Z:
                     M_ast_prop[0] = self.M[d][j]
                     Z_prop[0] = np.sum(self.z[d][j]) 
                 Wjd = Counter(self.w[d_prime][j_prime])
                 for v in Wjd:
                     W_prop[1,v] += Wjd[v]
-                if self.secondary_topic:
+                if self.secondary_topic and self.shared_Z:
                     M_ast_prop[1] = self.M[d_prime][j_prime]
                     Z_prop[1] = np.sum(self.z[d_prime][j_prime]) 
                 # If the allocation is random, the entire vector can be calculated
@@ -1014,14 +1090,14 @@ class topic_model:
                         for command in range(len(indices_s[doc])):
                             inds = indices_s[doc][command]
                             if allocation[command] == 0:
-                                if self.secondary_topic:    
+                                if self.secondary_topic and self.shared_Z:    
                                     M_ast_prop[0] += self.M[doc][inds] 
                                     Z_prop[0] += np.sum(self.z[doc][inds])
                                 Q = Counter(self.w[doc][inds][self.z[doc][inds] == 1] if self.secondary_topic else self.w[doc][inds])
                                 for v in Q:
                                     W_prop[0,v] += Q[v]
                             else:
-                                if self.secondary_topic: 
+                                if self.secondary_topic and self.shared_Z: 
                                     M_ast_prop[1] += self.M[doc][inds]
                                     Z_prop[1] += np.sum(self.z[doc][inds])
                                 Q = Counter(self.w[doc][inds][self.z[doc][inds] == 1] if self.secondary_topic else self.w[doc][inds])
@@ -1050,7 +1126,7 @@ class topic_model:
                 Q = Counter(self.w[d_prime][j_prime] if not self.secondary_topic else self.w[d_prime][j_prime][self.w[d_prime][j_prime] == 1])
                 for v in Q:
                     W_temp[1,v] = Q[v]
-                if self.secondary_topic:
+                if self.secondary_topic and self.shared_Z:
                     M_ast_prop = np.zeros(2); M_ast_prop[0] = self.M_star[s] + self.M_star[s_ast]
                     Z_prop = np.zeros(2); Z_prop[0] = self.Z[s] + self.Z[s_ast]
                     M_ast_temp = np.zeros(2); Z_temp = np.zeros(2)
@@ -1077,7 +1153,7 @@ class topic_model:
                             for v in Wjd:
                                 probs += np.sum(np.log(np.add.outer(self.eta + W_prop[:,v], np.arange(Wjd[v]))), axis=1)
                             probs -= np.sum(np.log(np.add.outer(np.sum(self.eta + W_prop, axis=1), np.arange(np.sum(list(Wjd.values()))))), axis=1)
-                            if self.secondary_topic:
+                            if self.secondary_topic and self.shared_Z:
                                 probs += np.sum(np.log(np.add.outer(self.alpha + Z_prop, np.arange(Zjd))), axis=1)
                                 probs += np.sum(np.log(np.add.outer(self.alpha0 + M_ast_prop - Z_prop, np.arange(self.M[doc][command] - Zjd))), axis=1)
                                 probs -= np.sum(np.log(np.add.outer(self.alpha0 + self.alpha + M_ast_prop, np.arange(self.M[doc][command]))), axis=1)              
@@ -1086,7 +1162,7 @@ class topic_model:
                             for v in Wjd:
                                 probs += np.sum(np.log(np.add.outer(self.eta + W_temp[:,v], np.arange(Wjd[v]))), axis=1)
                             probs -= np.sum(np.log(np.add.outer(np.sum(self.eta + W_temp, axis=1), np.arange(np.sum(list(Wjd.values()))))), axis=1)
-                            if self.secondary_topic:
+                            if self.secondary_topic and self.shared_Z:
                                 probs += np.sum(np.log(np.add.outer(self.alpha + Z_temp, np.arange(Zjd))), axis=1)
                                 probs += np.sum(np.log(np.add.outer(self.alpha0 + M_ast_temp - Z_temp, np.arange(self.M[doc][command] - Zjd))), axis=1)
                                 probs -= np.sum(np.log(np.add.outer(self.alpha0 + self.alpha + M_ast_temp, np.arange(self.M[doc][command]))), axis=1)                                         
@@ -1103,14 +1179,14 @@ class topic_model:
                             S_prop[sjd_new,td] += 1
                             for v in Wjd:
                                 W_prop[sjd_new,v] += Wjd[v]
-                            if self.secondary_topic:
+                            if self.secondary_topic and self.shared_Z:
                                 M_ast_prop[sjd_new] += self.M[doc][command]
                                 Z_prop[sjd_new] += Zjd
                         else:
                             S_temp[sjd_new,td] += 1
                             for v in Wjd:
                                 W_temp[sjd_new,v] += Wjd[v]
-                                if self.secondary_topic:
+                                if self.secondary_topic and self.shared_Z:
                                     M_ast_temp[sjd_new] += self.M[doc][command]
                                     Z_temp[sjd_new] += Zjd
             else:
@@ -1163,11 +1239,17 @@ class topic_model:
     def MCMC(self, iterations, burnin=0, size=1, verbose=True, calculate_ll=False, random_allocation=False, jupy_out=False, 
                 return_t=True, return_s=False, return_z=False, return_change_t=False, return_change_s=False, return_change_z=False, thinning=1):
         # Moves
-        moves = ['t', 'split_merge_session']
-        moves_probs = [5, 1]
+        moves = ['t']
+        moves_probs = [5]
+        if not self.lambda_gem and not self.phi_gem:
+            moves += ['split_merge_session']
+            moves_probs += [1]
         if self.command_level_topics:
-            moves += ['s', 'split_merge_command']
-            moves_probs += [5, 2]
+            moves += ['s']
+            moves_probs += [5]
+            if not self.psi_gem: 
+                moves += ['split_merge_command']
+                moves_probs += [2]
         if self.secondary_topic:
             moves += ['z']
             moves_probs += [5]
