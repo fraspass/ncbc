@@ -8,8 +8,13 @@ def normalise(x):
 
 ## Simulate data from the topic model
 def simulate_data(D, K=0, fixed_K = True, H=0, fixed_H = True, V=0, fixed_V = True, 
+<<<<<<< Updated upstream
                     N_num=0, fixed_N = False, M_num=0, fixed_M = False, psi_dic=0, fixed_psi = False,
                     secondary_topic = False, shared_Z = False, command_level_topics = False, phi_last=True,
+=======
+                    N_num=0, fixed_N = False, M_num=0, fixed_M = False, psi_dic=0, fixed_psi = False, phi_dic=0, fixed_phi=False,
+                    secondary_topic = False, command_level_topics = False, phi_last=True, distinct_psi= False, distinct_phi= False,
+>>>>>>> Stashed changes
                     gamma=1.0, eta=1.0, alpha=1.0, alpha0=1.0, tau=1.0,
                     csi=1, omega=10, stick_truncation=100, seed=111):
     # Check if the provided value of seed is appropriate
@@ -109,34 +114,51 @@ def simulate_data(D, K=0, fixed_K = True, H=0, fixed_H = True, V=0, fixed_V = Tr
     # Sample t
     t = np.random.choice(K if fixed_K else stick_truncation, size=D, p=lam)
     # Sample phi
-    phi = {}
     if not command_level_topics:
         rr = range((K if fixed_K else stick_truncation) + (1 if secondary_topic else 0))
     else:
         rr = range((H if fixed_H else stick_truncation) + (1 if secondary_topic else 0))
-    for k in rr:
-        if not fixed_V:
-            b = np.random.beta(a=1, b=eta, size=stick_truncation)
-            phi[k] = np.ones(stick_truncation)
-            phi[k][0] = b[0]
-            phi[k][1:-1] = b[1:-1] * np.cumprod(1-b)[:-2]
-            phi[k][-1] = 1 - np.sum(phi[k][:-1])
-        else:
-            phi[k] = np.random.dirichlet(alpha=np.ones(V)*eta)         
+    if fixed_phi: # for given dictionary of probs as argument
+        phi = phi_dic
+    else:
+        if distinct_phi: # avoid overlap when not given dictionary as argument
+            phi_sample = np.random.dirichlet(alpha=np.ones(V)*eta,size = len(rr)*10) 
+            v_ind=[np.argmax(ii) for ii in phi_sample] # get index for topic h where peak for each sample drawn 
+            uniq_v=np.unique(v_ind) # get unique topic h for which samples peak
+            sample_ind_v=[v_ind.index(ii) for ii in uniq_v[0:len(rr)]]
+            phi=phi_sample[sample_ind_v]
+        else:    # allow randomeness
+            phi = {}
+            for k in rr:
+                if not fixed_V:
+                    b = np.random.beta(a=1, b=eta, size=stick_truncation)
+                    phi[k] = np.ones(stick_truncation)
+                    phi[k][0] = b[0]
+                    phi[k][1:-1] = b[1:-1] * np.cumprod(1-b)[:-2]
+                    phi[k][-1] = 1 - np.sum(phi[k][:-1])
+                else:
+                    phi[k] = np.random.dirichlet(alpha=np.ones(V)*eta)         
     if command_level_topics:
         if fixed_psi:
             psi=psi_dic
         else:
-            psi = {}
-            for k in range(K if fixed_K else stick_truncation):
-                if not fixed_H:
-                    b = np.random.beta(a=1, b=tau, size=stick_truncation)
-                    psi[k] = np.ones(stick_truncation)
-                    psi[k][0] = b[0]
-                    psi[k][1:-1] = b[1:-1] * np.cumprod(1-b)[:-2]
-                    psi[k][-1] = 1 - np.sum(phi[k][:-1])
-                else:
-                    psi[k] = np.random.dirichlet(alpha=np.ones(H)*tau)
+            if distinct_psi:
+                psi_sample = np.random.dirichlet(alpha=np.ones(H)*tau,size = K*10)
+                h_ind=[np.argmax(ii) for ii in psi_sample] # get index for topic h where peak for each sample drawn 
+                uniq_h=np.unique(h_ind) # get unique topic h for which samples peak
+                sample_ind_h=[h_ind.index(ii) for ii in uniq_h[0:K]]
+                psi=psi_sample[sample_ind_h]
+            else:    
+                psi = {}
+                for k in range(K if fixed_K else stick_truncation):
+                    if not fixed_H:
+                        b = np.random.beta(a=1, b=tau, size=stick_truncation)
+                        psi[k] = np.ones(stick_truncation)
+                        psi[k][0] = b[0]
+                        psi[k][1:-1] = b[1:-1] * np.cumprod(1-b)[:-2]
+                        psi[k][-1] = 1 - np.sum(phi[k][:-1])
+                    else:
+                        psi[k] = np.random.dirichlet(alpha=np.ones(H)*tau)
         # Sample s
         s = {}
         for d in range(D):

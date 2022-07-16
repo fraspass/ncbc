@@ -5,8 +5,9 @@ simul_results/
 simulations_cfg/
 simulated_data_eda.ipynb
 simul_results_visual.ipynb
-simul_yml.py
-multiprocessing_mcmc.py
+simulated_data_eda_2.ipynb
+simul_results_visual_2.ipynb
+label_switch_z_investigation.ipynb
 debug.log
 .ipynb_*
 

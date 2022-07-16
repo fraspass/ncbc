@@ -2,6 +2,7 @@
 # from base64 import encode
 from encodings import utf_8
 # import sys
+from mailbox import MH
 import numpy as np
 from collections import Counter
 from scipy.sparse.construct import random
@@ -230,6 +231,128 @@ class topic_model:
                         Wjd = Counter(self.w[doc][j])
                         for v in Wjd:
                             self.W[td, v] += Wjd[v]
+    
+
+    ## MH step for label switching issue with z
+    def MH_label_z(self):
+        if not self.command_level_topics:
+            #z_prop=self.z.copy()
+            
+            #print("z self entering def memory position:",id(self.z))
+            #print("z prop entering def memory position:",id(z_prop))
+            #Z_prop=np.copy(self.Z)
+            #W_prop=np.copy(self.W)
+            W_k_prop=np.zeros(shape=self.V, dtype=int) # Counter for topic drawn - Primary topic
+            W_0_prop=np.zeros(shape=self.V, dtype=int) # Counter for topic drawn - Secondary topic
+            # Draw a session/doc topic
+            index_k=np.random.choice(np.unique(self.t))
+            #print("Wk self before:",self.W[index_k+1])
+            #print("W0 self before:",self.W[0])
+            print(np.unique(self.t))
+            # Keep index of docs with topic index_k
+            index_d=np.where(self.t==index_k)[0]
+            print("topic index sampled: ",index_k)
+            for d in index_d:
+                for j in range(self.N[d]):
+                    #print("self.z[d] before: ",self.z[d][j])
+                    #print("self.z bef memory position:",id(self.z[d][j]))
+                    #print("z prop bef memory position:",id(z_prop[d][j]))
+                    #z_prop[d][j]=1-np.copy(self.z[d][j])
+                    z_prop=1-self.z[d][j]#np.copy(self.z[d][j])
+                    #print("self.z[d] after: ",self.z[d][j])
+                    #print("self.z after memory position:",id(self.z[d][j]))
+                    #print("z prop after memory position:",id(z_prop[d][j]))
+                    #print("z prop within loop memory position:",id(z_prop))
+                    # Primary topics
+                    #Wjd=Counter(self.w[d][j][z_prop[d][j] == 1]) # Update counter for W after label switch proposal
+                    Wjd=Counter(self.w[d][j][z_prop == 1]) # Update counter for W after label switch proposal
+                    for v in Wjd:
+                        W_k_prop[v] += Wjd[v]
+                    # Secondary topics
+                    #Wjd = Counter(self.w[d][j][z_prop[d][j] == 0])
+                    Wjd = Counter(self.w[d][j][z_prop == 0])
+                    for v in Wjd:
+                        W_0_prop[v] += Wjd[v]
+            W_0_prop = self.W[0] - W_k_prop + W_0_prop
+            #print("W self memory position:",id(self.W))
+            #print("W_0 prop memory position:",id(W_0_prop))
+            #W_prop[index_k+1]=W_k_prop
+            #Z_prop[index_k]=self.M_star[index_k]-self.Z[index_k] # Update counter for Z
+            #print("self.M_star[index_k] before ",self.M_star[index_k])
+            Z_k_prop=self.M_star[index_k]-self.Z[index_k] # Update counter for Z     
+            #print("self.M_star[index_k] after ",self.M_star[index_k]) 
+            MH_ratio = 0      
+            MH_ratio += logB(self.eta + W_k_prop) + logB(self.eta + W_0_prop) + logB(np.array([self.alpha + Z_k_prop, self.alpha0 + self.M_star[index_k] - Z_k_prop]))
+            MH_ratio -= logB(self.eta + self.W[index_k+1]) + logB(self.eta + self.W[0]) + logB(np.array([self.alpha + self.Z[index_k], self.alpha0 + self.M_star[index_k] - self.Z[index_k]]))
+            # Calculate MH ratio
+            #print("nominator ratio: ", self.marginal_loglikelihood_MH_z(Z_prop,W_prop))
+            #print("denominator ratio: ",self.marginal_loglikelihood_MH_z(self.Z,self.W))
+            
+            #print("log ratio: ",MH_ratio)
+            prob=min(np.exp(MH_ratio),1)
+            gen=np.random.binomial(1,prob)
+            
+            if gen==1:
+                print("Accepted")
+                for d in index_d:
+                    for j in range(self.N[d]):
+                        self.z[d][j]=1-self.z[d][j]
+                #self.z=z_prop
+                self.Z[index_k]=Z_k_prop
+                self.W[index_k+1]=W_k_prop
+                self.W[0]=W_0_prop
+            #    self.z=z_prop
+                #self.Z=Z_prop
+                #self.W=W_prop
+            #    self.Z[index_k]=Z_k_prop
+            #    self.W[index_k+1]=W_k_prop
+            #print("Wk self after:",self.W[index_k+1])
+            #print("W0 self after:",self.W[0])
+        else:
+            
+            W_s_prop=np.zeros(shape=self.V, dtype=int) # Counter for topic drawn
+            W_0_prop=np.zeros(shape=self.V, dtype=int)
+            # Draw a command topic (from existing topics)
+            list_unique=[np.unique(val) for key,val in self.s.items()] # list of lists of unique command topics in docs
+            index_s=np.random.choice(np.unique([x for l in list_unique for x in l])) # random draw from list of unique command topics accross all docs
+            for d in range(self.D):
+                for j in range(self.N[d]):
+                    if self.s[d][j]==index_s:
+                        #z_prop[d][j]=1-self.z[d][j]
+                        z_prop=1-self.z[d][j]
+                        Wjd=Counter(self.w[d][j][z_prop == 1]) # Update counter for W after label switch proposal
+                        for v in Wjd:
+                            W_s_prop[v]+=Wjd[v]
+                        # Secondary topics
+                        #Wjd = Counter(self.w[d][j][z_prop[d][j] == 0])
+                        Wjd = Counter(self.w[d][j][z_prop == 0])
+                        for v in Wjd:
+                            W_0_prop[v] += Wjd[v]
+            W_0_prop = self.W[0] - W_s_prop + W_0_prop
+            #W_prop[index_s+1]=W_s_prop
+            #Z_prop[index_s]=self.M_star[index_s]-self.Z[index_s] # Update counter for Z
+            Z_s_prop=self.M_star[index_s]-self.Z[index_s] # Update counter for Z        
+            
+            MH_ratio = 0      
+            MH_ratio += logB(self.eta + W_s_prop) + logB(self.eta + W_0_prop) + logB(np.array([self.alpha + Z_s_prop, self.alpha0 + self.M_star[index_s] - Z_s_prop]))
+            MH_ratio -= logB(self.eta + self.W[index_s+1]) + logB(self.eta + self.W[0]) + logB(np.array([self.alpha + self.Z[index_s], self.alpha0 + self.M_star[index_s] - self.Z[index_s]]))
+            #print("log MH ratio: ",MH_ratio)
+            prob=min(np.exp(MH_ratio),1)
+            gen=np.random.binomial(1,prob)
+            if gen==1:
+                #self.z=z_prop
+                #self.Z=Z_prop
+                #self.W=W_prop
+                self.Z[index_s]=Z_s_prop
+                self.W[index_s+1]=W_s_prop
+                self.W[0]=W_0_prop
+                for d in range(self.D):
+                    for j in range(self.N[d]):
+                        if self.s[d][j]==index_s:
+                            self.z[d][j]=1-self.z[d][j]
+                #self.z=z_prop
+                
+                
 
     ## Initializes chain at given values of t, s and z
     def custom_init(self, t, s=None, z=None):
@@ -879,7 +1002,11 @@ class topic_model:
                         for j in self.w[d]:
                             M_ast_temp[0] += self.M[d][j]
                             Z_temp[0] += np.sum(self.z[d][j])
+<<<<<<< Updated upstream
                         for j in self.w[d_prime]: ##self.tau + self.S[d_prime]:
+=======
+                        for j in self.w[d_prime]: #self.tau + self.S[d_prime]:
+>>>>>>> Stashed changes
                             M_ast_temp[1] += self.M[d_prime][j]
                             Z_temp[1] += np.sum(self.z[d_prime][j])
             # Caclulate proposal probability
@@ -895,7 +1022,11 @@ class topic_model:
                         Wd = Counter()
                         if self.secondary_topic:
                             Zd = 0
+<<<<<<< Updated upstream
                         for j in self.w[doc]: ## self.tau + self.S[doc]:
+=======
+                        for j in self.w[doc]: #self.tau + self.S[doc]:
+>>>>>>> Stashed changes
                             if self.secondary_topic:
                                 Zdj = self.z[doc][j]
                                 Wd += Counter(self.w[doc][j][Zdj == 1])
@@ -1251,8 +1382,8 @@ class topic_model:
                 moves += ['split_merge_command']
                 moves_probs += [2]
         if self.secondary_topic:
-            moves += ['z']
-            moves_probs += [5]
+            moves += ['z', 'label_switch_z']
+            moves_probs += [5, 1]
         moves_probs /= np.sum(moves_probs)
         ## Marginal posterior
         if calculate_ll:
@@ -1296,8 +1427,10 @@ class topic_model:
                 self.resample_indicators(size=size)
             elif move == 'split_merge_session':
                 self.split_merge_session(random_allocation=random_allocation)
-            else:
+            elif move == 'split_merge_command':
                 self.split_merge_command(random_allocation=random_allocation)
+            else:
+                self.MH_label_z()
             if calculate_ll:
                 ll += [self.marginal_loglikelihood()]
             # Print progression
