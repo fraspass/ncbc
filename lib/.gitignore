@@ -10,5 +10,5 @@ simul_results_visual_2.ipynb
 label_switch_z_investigation.ipynb
 debug.log
 .ipynb_*
-.vscode
+.vscode/*
 

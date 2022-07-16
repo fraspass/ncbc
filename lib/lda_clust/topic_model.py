@@ -1002,11 +1002,7 @@ class topic_model:
                         for j in self.w[d]:
                             M_ast_temp[0] += self.M[d][j]
                             Z_temp[0] += np.sum(self.z[d][j])
-<<<<<<< Updated upstream
                         for j in self.w[d_prime]: ##self.tau + self.S[d_prime]:
-=======
-                        for j in self.w[d_prime]: #self.tau + self.S[d_prime]:
->>>>>>> Stashed changes
                             M_ast_temp[1] += self.M[d_prime][j]
                             Z_temp[1] += np.sum(self.z[d_prime][j])
             # Caclulate proposal probability
@@ -1022,11 +1018,7 @@ class topic_model:
                         Wd = Counter()
                         if self.secondary_topic:
                             Zd = 0
-<<<<<<< Updated upstream
                         for j in self.w[doc]: ## self.tau + self.S[doc]:
-=======
-                        for j in self.w[doc]: #self.tau + self.S[doc]:
->>>>>>> Stashed changes
                             if self.secondary_topic:
                                 Zdj = self.z[doc][j]
                                 Wd += Counter(self.w[doc][j][Zdj == 1])

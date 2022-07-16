@@ -8,13 +8,10 @@ def normalise(x):
 
 ## Simulate data from the topic model
 def simulate_data(D, K=0, fixed_K = True, H=0, fixed_H = True, V=0, fixed_V = True, 
-<<<<<<< Updated upstream
                     N_num=0, fixed_N = False, M_num=0, fixed_M = False, psi_dic=0, fixed_psi = False,
                     secondary_topic = False, shared_Z = False, command_level_topics = False, phi_last=True,
-=======
-                    N_num=0, fixed_N = False, M_num=0, fixed_M = False, psi_dic=0, fixed_psi = False, phi_dic=0, fixed_phi=False,
-                    secondary_topic = False, command_level_topics = False, phi_last=True, distinct_psi= False, distinct_phi= False,
->>>>>>> Stashed changes
+                    phi_dic=0, fixed_phi=False,
+                    distinct_psi= False, distinct_phi= False,
                     gamma=1.0, eta=1.0, alpha=1.0, alpha0=1.0, tau=1.0,
                     csi=1, omega=10, stick_truncation=100, seed=111):
     # Check if the provided value of seed is appropriate
