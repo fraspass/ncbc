@@ -1,11 +1,6 @@
 #! /usr/bin/env python3
-# from base64 import encode
-from encodings import utf_8
-# import sys
-from mailbox import MH
 import numpy as np
 from collections import Counter
-from scipy.sparse.construct import random
 from scipy.special import logsumexp, loggamma
 from gensim.models import LdaModel
 from gensim.corpora import Dictionary
@@ -162,14 +157,32 @@ class topic_model:
     ## Calculate marginal posterior up to normalising constants
     def marginal_loglikelihood(self):
         ll = 0
-        ll += logB(self.gamma + self.T)
-        if self.command_level_topics:
-            ll += np.sum([logB(self.tau + self.S[k]) for k in range(self.K)])
-            ll += np.sum([logB(self.eta + self.W[h]) for h in range(self.H + (1 if self.secondary_topic else 0))])
+        if self.lambda_gem:
+            ll += self.K * np.log(self.gamma) + loggamma(self.gamma) - loggamma(self.gamma + self.D) + np.sum(loggamma(self.T))
         else:
-            ll += np.sum([logB(self.eta + self.W[k]) for k in range(self.K + (1 if self.secondary_topic else 0))])
+            ll += logB(self.gamma + self.T) - logB(self.gamma * np.ones(self.K))
+        if self.command_level_topics:
+            if self.psi_gem:
+                ll += np.sum(np.sum(self.S > 0, axis=1) * np.log(self.tau) + loggamma(self.tau) - loggamma(self.tau + self.S.sum(axis=1)))
+                ll += np.nansum(loggamma(self.S) * (self.S > 0))
+            else:
+                ll += np.sum([logB(self.tau + self.S[k]) for k in range(self.K)]) - self.K * logB(self.tau * np.ones(self.H))
+            if self.phi_gem:
+                ll += np.sum(np.sum(self.W > 0, axis=1) * np.log(self.eta) + loggamma(self.eta) - loggamma(self.eta + self.W.sum(axis=1)))
+                ll += np.nansum(loggamma(self.W) * (self.W > 0))
+            else:
+                ll += np.sum([logB(self.eta + self.W[h]) for h in range(self.H + (1 if self.secondary_topic else 0))]) 
+                ll -= (self.H + (1 if self.secondary_topic else 0)) * logB(self.eta * np.ones(self.V))
+        else:
+            if self.phi_gem:
+                ll += np.sum(np.sum(self.W > 0, axis=1) * np.log(self.eta) + loggamma(self.eta) - loggamma(self.eta + self.W.sum(axis=1)))
+                ll += np.nansum(loggamma(self.W) * (self.W > 0))
+            else:
+                ll += np.sum([logB(self.eta + self.W[k]) for k in range(self.K + (1 if self.secondary_topic else 0))])
+                ll -= (self.K + (1 if self.secondary_topic else 0)) * logB(self.eta * np.ones(self.V))
         if self.secondary_topic:
             ll += np.sum([logB(np.array([self.alpha + self.Z[k], self.alpha0 + self.M_star[k] - self.Z[k]])) for k in range(self.H if self.command_level_topics else self.K)])
+            ll -= (self.H if self.command_level_topics else self.K) * logB(np.array([self.alpha, self.alpha0]))
         return ll 
 
     ## Initialise counts given initial values of t, s and z
@@ -1549,7 +1562,7 @@ class topic_model:
             elif move == 'split_merge_command':
                 self.split_merge_command(random_allocation=random_allocation)
             else:
-                self.MH_label_z()
+                continue ##self.MH_label_z()
             if calculate_ll:
                 ll += [self.marginal_loglikelihood()]
             # Print progression
