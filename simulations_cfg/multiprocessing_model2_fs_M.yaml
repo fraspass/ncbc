@@ -1,0 +1,255 @@
+# Topic model configurations
+data_dir: 
+  - "./simulated_data/fixed_structure/var_M/model_2/data_m2_M_5.pkl"
+  - "./simulated_data/fixed_structure/var_M/model_2/data_m2_M_30.pkl"
+  - "./simulated_data/fixed_structure/var_M/model_2/data_m2_M_55.pkl"
+  - "./simulated_data/fixed_structure/var_M/model_2/data_m2_M_80.pkl"
+  - "./simulated_data/fixed_structure/var_M/model_2/data_m2_M_105.pkl"
+  - "./simulated_data/fixed_structure/var_M/model_2/data_m2_M_130.pkl"
+K:
+  - 20
+  - 20
+  - 20
+  - 20
+  - 20
+  - 20
+H:
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+V:
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+fixed_H:
+  - True
+  - True
+  - True
+  - True
+  - True
+  - True
+fixed_K:
+  - True
+  - True
+  - True
+  - True
+  - True
+  - True
+fixed_V:
+  - True
+  - True
+  - True
+  - True
+  - True
+  - True
+secondary_topic:
+  - True
+  - True
+  - True
+  - True
+  - True
+  - True
+
+command_level_topics:
+  - False
+  - False
+  - False
+  - False
+  - False
+  - False
+gamma:
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+eta:
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+alpha:
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+alpha_zero:
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+tau:
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+
+
+# MCMC configurations
+iterations:
+  - 100000
+  - 100000
+  - 100000
+  - 100000
+  - 100000
+  - 100000
+burn:
+  - 10000
+  - 10000
+  - 10000
+  - 10000
+  - 10000
+  - 10000
+size:
+  - 10
+  - 10
+  - 10
+  - 10
+  - 10
+  - 10
+verbose:
+  - True
+  - True
+  - True
+  - True
+  - True
+  - True
+calc_ll:
+  - True
+  - True
+  - True
+  - True
+  - True
+  - True
+rand_alloc:
+  - False
+  - False
+  - False
+  - False
+  - False
+  - False
+jupy_out:
+  - False
+  - False
+  - False
+  - False
+  - False
+  - False
+return_t:
+  - True
+  - True
+  - True
+  - True
+  - True
+  - True
+return_s:
+  - False
+  - False
+  - False
+  - False
+  - False
+  - False
+return_z:
+  - True
+  - True
+  - True
+  - True
+  - True
+  - True
+thinning:
+  - 100
+  - 100
+  - 100
+  - 100
+  - 100
+  - 100
+
+return_change_t:
+  - True
+  - True
+  - True
+  - True
+  - True
+  - True
+return_change_s:
+  - False
+  - False
+  - False
+  - False
+  - False
+  - False
+return_change_z:
+  - True
+  - True
+  - True
+  - True
+  - True
+  - True
+
+# Initialization function
+# Values "custom", "random", "gensim", "spectral"
+mod_init:
+  - "custom"
+  - "custom"
+  - "custom"
+  - "custom"
+  - "custom"
+  - "custom"
+
+# Only for gensim
+chunk:
+  - 2000
+  - 2000
+  - 2000
+  - 2000
+  - 2000
+  - 2000
+
+passes:
+  - 100
+  - 100
+  - 100
+  - 100
+  - 100
+  - 100
+
+gen_iter:
+  - 1000
+  - 1000
+  - 1000
+  - 1000
+  - 1000
+  - 1000
+  
+eval_step:
+  
+
+# Initial K and H 
+K_init:
+  
+H_init:
+  
+# Save dir
+save_dir:
+  - "./simul_results/fixed_structure/var_M/model_2/res_model_2_M_5_custom.pkl"
+  - "./simul_results/fixed_structure/var_M/model_2/res_model_2_M_30_custom.pkl"
+  - "./simul_results/fixed_structure/var_M/model_2/res_model_2_M_55_custom.pkl"
+  - "./simul_results/fixed_structure/var_M/model_2/res_model_2_M_80_custom.pkl"
+  - "./simul_results/fixed_structure/var_M/model_2/res_model_2_M_105_custom.pkl"
+  - "./simul_results/fixed_structure/var_M/model_2/res_model_2_M_130_custom.pkl"
+  

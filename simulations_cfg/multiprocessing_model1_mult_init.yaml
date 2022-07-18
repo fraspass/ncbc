@@ -1,0 +1,209 @@
+# Topic model configurations
+data_dir: 
+  - "./simulated_data/revised_sim_data/data_m1.pkl"
+  - "./simulated_data/revised_sim_data/data_m1.pkl"
+  - "./simulated_data/revised_sim_data/data_m1.pkl"
+
+K:
+  - 20
+  - 20
+  - 20
+  - 20
+  - 20
+H:
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+V:
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+fixed_H:
+  - True
+  - True
+  - True
+  - True
+  - True
+fixed_K:
+  - True
+  - True
+  - True
+  - True
+  - True
+fixed_V:
+  - True
+  - True
+  - True
+  - True
+  - True
+secondary_topic:
+  - False
+  - False
+  - False
+  - False
+  - False
+command_level_topics:
+  - False
+  - False
+  - False
+  - False
+  - False
+gamma:
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+eta:
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+alpha:
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+alpha_zero:
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+tau:
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+
+
+# MCMC configurations
+iterations:
+  - 100000
+  - 100000
+  - 100000
+  - 100000
+  - 100000
+burn:
+  - 10000
+  - 10000
+  - 10000
+  - 10000
+  - 10000
+size:
+  - 10
+  - 10
+  - 10
+  - 10
+  - 10
+verbose:
+  - True
+  - True
+  - True
+  - True
+  - True
+calc_ll:
+  - True
+  - True
+  - True
+  - True
+  - True
+rand_alloc:
+  - False
+  - False
+  - False
+  - False
+  - False
+jupy_out:
+  - False
+  - False
+  - False
+  - False
+  - False
+return_t:
+  - True
+  - True
+  - True
+  - True
+  - True
+return_s:
+  - False
+  - False
+  - False
+  - False
+  - False
+return_z:
+  - False
+  - False
+  - False
+  - False
+  - False
+thinning:
+  - 100
+  - 100
+  - 100
+  - 100
+  - 100
+
+return_change_t:
+  - True
+  - True
+  - True
+  - True
+  - True
+return_change_s:
+  - False
+  - False
+  - False
+  - False
+  - False
+return_change_z:
+  - False
+  - False
+  - False
+  - False
+  - False
+
+# Initialization function
+# Values "custom", "random", "gensim", "spectral"
+mod_init:
+  - "spectral"
+  - "gensim"
+  - "custom"
+
+# Only for gensim
+chunk:
+  -
+  - 2000
+  -
+passes:
+  -
+  - 100
+  -
+gen_iter:
+  -
+  - 1000
+  -
+eval_step:
+  
+
+# Initial K and H 
+K_init:
+  
+H_init:
+  
+# Save dir
+save_dir:
+  - "./simul_results/revised_simul_results_thin_100/topic_model_1_spectral.pkl"
+  - "./simul_results/revised_simul_results_thin_100/topic_model_1_gensim.pkl"
+  - "./simul_results/revised_simul_results_thin_100/topic_model_1_custom.pkl"
+
+
+  
