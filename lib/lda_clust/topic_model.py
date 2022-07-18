@@ -14,6 +14,7 @@ from numpy.linalg import svd
 from sklearn.cluster import KMeans
 from .utils import logB
 from IPython.display import display, clear_output
+from functools import reduce
 
 import logging
 logging.basicConfig(filename="debug.log" ,level=logging.DEBUG)
@@ -396,7 +397,7 @@ class topic_model:
         self.init_counts()
 
     ## Initializes chain using spectral clustering  
-    def spectral_init(self, K_init=None, H_init=None):
+    def spectral_init(self, K_init=None, H_init=None, random_z=False):
         # Check if the provided value for K is appropriate
         if K_init is not None:
             if not isinstance(K_init, int) or K_init < 1:
@@ -463,16 +464,26 @@ class topic_model:
             else:
                 self.t = np.zeros(self.D, dtype=int)
         # Initialise all z's at random
-        self.z = {}
-        for d in self.w:
-            self.z[d] = {}
-            for j in self.w[d]:
-                self.z[d][j] = np.random.choice(2,size=self.M[d][j],p=[0.001,0.999])
+        if self.secondary_topic:
+            self.z = {}
+            freqs = Counter()
+            for d in self.w:
+                freqs += Counter(np.unique(reduce(lambda xs, ys: xs + ys, [list(self.w[d][j]) for j in self.w[d]])))
+            for d in self.w:
+                self.z[d] = {}
+                for j in self.w[d]:
+                    if random_z:
+                        self.z[d][j] = np.ones(self.M[d][j]) ## np.random.choice(2,size=self.M[d][j])
+                    else:
+                        self.z[d][j] = np.zeros(self.M[d][j])
+                        for i in range(self.M[d][j]):
+                            f = freqs[self.w[d][j][i]] / self.D
+                            self.z[d][j][i] = np.random.choice(2, p=[f, 1-f])      
         # Initialise counts
         self.init_counts()     
 
    ## Resample session-level topics
-    def resample_session_topics(self, size=1, indices=None, printout=False):
+    def resample_session_topics(self, size=1, indices=None):
         # Optional input: subset - list of integers in {0,1,...,D-1}
         if indices is None:
             indices = np.random.choice(self.D, size=size)
@@ -579,8 +590,6 @@ class topic_model:
             probs = np.exp(probs - logsumexp(probs))
             # Resample session-level topic
             td_new = np.random.choice(len(probs), p=probs)
-            if printout: 
-                print(td_old, probs, td_new)
             self.t[d] = td_new
             # Update counts
             self.T[td_new] += 1
