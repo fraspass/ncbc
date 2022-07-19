@@ -688,8 +688,8 @@ class topic_model:
             if self.command_level_topics:
                 if self.psi_gem:
                     for h in Sd:
-                        probs += np.append(np.log([self.tau if s == 0 else s for s in self.S[:,h]]), np.log(self.tau))
-                        probs += np.append(np.sum(np.log(np.add.outer(self.S[:,h], np.arange(1, Sd[h]))), axis=1), 0)
+                        probs += np.log([self.tau if s == 0 else s for s in self.S[:,h]])
+                        probs += np.sum(np.log(np.add.outer(self.S[:,h], np.arange(1, Sd[h]))), axis=1)
                     probs -= np.sum(np.log(np.add.outer(self.tau + np.sum(self.S, axis=1), np.arange(np.sum(list(Sd.values()))))), axis=1)    
                 else:
                     for h in Sd:
@@ -769,14 +769,14 @@ class topic_model:
             td = self.t[d]
             s_old = int(self.s[d][j])
             self.S[td,s_old] -= 1
-            if self.phi_gem:
+            if self.psi_gem:
                 del_sold = (np.sum(self.S[:,s_old]) == 0)
                 if del_sold:
                     self.S = np.delete(self.S, s_old, axis=1)
                     self.H -= 1
                     for doc in self.s:
                         self.s[doc][self.s[doc] >= s_old] -= 1
-                self.S = np.append(self.S, np.zeros((1,self.K)), axis=1)
+                self.S = np.append(self.S, np.zeros((self.K,1)), axis=1)
             if self.secondary_topic:
                 Zdj = self.z[d][j]
                 Wd = Counter(self.w[d][j][Zdj == 1])
@@ -836,7 +836,7 @@ class topic_model:
             # Transform the probabilities
             probs = np.exp(probs - logsumexp(probs))
             # Resample command-level topic
-            s_new = np.random.choice(self.H, p=probs)
+            s_new = np.random.choice(len(probs), p=probs)
             self.s[d][j] = s_new
             # Update counts
             self.S[td,s_new] += 1
@@ -1464,7 +1464,7 @@ class topic_model:
         if self.command_level_topics:
             moves += ['s']
             moves_probs += [5]
-            if not self.psi_gem: 
+            if not self.psi_gem and not self.phi_gem: 
                 moves += ['split_merge_command']
                 moves_probs += [2]
         if self.secondary_topic:
