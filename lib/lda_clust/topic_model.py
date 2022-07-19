@@ -22,8 +22,8 @@ class topic_model:
     # "Topic modelling of command lines for attack pattern detection in cyber-security"
     # Required input: W - dictionary of dictionaries containing the words (as consecutive integers starting at 0)
 
-    def __init__(self, W, K, fixed_K = True, H=0, fixed_H = True, V=0, fixed_V = True, 
-                    secondary_topic = True, shared_Z = False, command_level_topics = True,
+    def __init__(self, W, K, H=0, V=0, fixed_V = True, secondary_topic = True, 
+                    shared_Z = False, command_level_topics = True,
                     gamma=1.0, tau=1.0, eta=1.0, alpha=1.0, alpha0=1.0,
                     lambda_gem=False, psi_gem=False, phi_gem=False):
         
@@ -117,17 +117,13 @@ class topic_model:
         ## GEM prior for psi
         if not isinstance(psi_gem, bool):
             raise TypeError('psi_gem must be True or False.')
-        elif psi_gem and self.command_level_topics:
+        elif psi_gem and not self.command_level_topics:
             raise TypeError('psi_gem can only be set to True if command_level_topics is True.')
         self.psi_gem = psi_gem
         # Check if the provided value for K is appropriate
         if not isinstance(K, int) or K < 2:
             raise ValueError('K must be an integer value larger or equal to 2.') 
         self.K = K
-        # Fixed or unbounded K
-        if not isinstance(fixed_K, bool):
-            return TypeError('fixed_K must be True or False.')
-        self.fixed_K = fixed_K
         # Check if the provided value for H is appropriate
         if not isinstance(H, int) or (self.command_level_topics and H < 2):
             raise ValueError('H must be an integer value larger or equal to 2 if command-level topics are used.') 
@@ -135,24 +131,12 @@ class topic_model:
         if H > 0 and not self.command_level_topics:
             raise ValueError('H can only be specified when command-level topics are used. Proposed solution: initialise H=0.')
         self.H = H
-        # Fixed or unbounded H
-        if not isinstance(fixed_H, bool):
-            return TypeError('fixed_H must be True or False.')
-        self.fixed_H = fixed_H
         # Initialise dictionaries
         self.t = np.zeros(self.D, dtype=int)
         if self.command_level_topics:
             self.s = {}
         if self.secondary_topic:
             self.z = {}
-        # Create counters of changes in t,s,z among iterations
-        self.change_counter_t = 0
-        if self.command_level_topics:
-            self.change_counter_s = 0
-        if self.secondary_topic:
-            self.change_counter_z = 0
-        #self.change_counter_s = dict.fromkeys(range(self.D),0)
-        #self.change_counter_z = dict.fromkeys(range(self.D),0)
 
     ## Calculate marginal posterior up to normalising constants
     def marginal_loglikelihood(self):
@@ -245,129 +229,7 @@ class topic_model:
                         Wjd = Counter(self.w[doc][j])
                         for v in Wjd:
                             self.W[td, v] += Wjd[v]
-    
-
-    ## MH step for label switching issue with z
-    def MH_label_z(self):
-        if not self.command_level_topics:
-            #z_prop=self.z.copy()
-            
-            #print("z self entering def memory position:",id(self.z))
-            #print("z prop entering def memory position:",id(z_prop))
-            #Z_prop=np.copy(self.Z)
-            #W_prop=np.copy(self.W)
-            W_k_prop=np.zeros(shape=self.V, dtype=int) # Counter for topic drawn - Primary topic
-            W_0_prop=np.zeros(shape=self.V, dtype=int) # Counter for topic drawn - Secondary topic
-            # Draw a session/doc topic
-            index_k=np.random.choice(np.unique(self.t))
-            #print("Wk self before:",self.W[index_k+1])
-            #print("W0 self before:",self.W[0])
-            print(np.unique(self.t))
-            # Keep index of docs with topic index_k
-            index_d=np.where(self.t==index_k)[0]
-            print("topic index sampled: ",index_k)
-            for d in index_d:
-                for j in range(self.N[d]):
-                    #print("self.z[d] before: ",self.z[d][j])
-                    #print("self.z bef memory position:",id(self.z[d][j]))
-                    #print("z prop bef memory position:",id(z_prop[d][j]))
-                    #z_prop[d][j]=1-np.copy(self.z[d][j])
-                    z_prop=1-self.z[d][j]#np.copy(self.z[d][j])
-                    #print("self.z[d] after: ",self.z[d][j])
-                    #print("self.z after memory position:",id(self.z[d][j]))
-                    #print("z prop after memory position:",id(z_prop[d][j]))
-                    #print("z prop within loop memory position:",id(z_prop))
-                    # Primary topics
-                    #Wjd=Counter(self.w[d][j][z_prop[d][j] == 1]) # Update counter for W after label switch proposal
-                    Wjd=Counter(self.w[d][j][z_prop == 1]) # Update counter for W after label switch proposal
-                    for v in Wjd:
-                        W_k_prop[v] += Wjd[v]
-                    # Secondary topics
-                    #Wjd = Counter(self.w[d][j][z_prop[d][j] == 0])
-                    Wjd = Counter(self.w[d][j][z_prop == 0])
-                    for v in Wjd:
-                        W_0_prop[v] += Wjd[v]
-            W_0_prop = self.W[0] - W_k_prop + W_0_prop
-            #print("W self memory position:",id(self.W))
-            #print("W_0 prop memory position:",id(W_0_prop))
-            #W_prop[index_k+1]=W_k_prop
-            #Z_prop[index_k]=self.M_star[index_k]-self.Z[index_k] # Update counter for Z
-            #print("self.M_star[index_k] before ",self.M_star[index_k])
-            Z_k_prop=self.M_star[index_k]-self.Z[index_k] # Update counter for Z     
-            #print("self.M_star[index_k] after ",self.M_star[index_k]) 
-            MH_ratio = 0      
-            MH_ratio += logB(self.eta + W_k_prop) + logB(self.eta + W_0_prop) + logB(np.array([self.alpha + Z_k_prop, self.alpha0 + self.M_star[index_k] - Z_k_prop]))
-            MH_ratio -= logB(self.eta + self.W[index_k+1]) + logB(self.eta + self.W[0]) + logB(np.array([self.alpha + self.Z[index_k], self.alpha0 + self.M_star[index_k] - self.Z[index_k]]))
-            # Calculate MH ratio
-            #print("nominator ratio: ", self.marginal_loglikelihood_MH_z(Z_prop,W_prop))
-            #print("denominator ratio: ",self.marginal_loglikelihood_MH_z(self.Z,self.W))
-            
-            #print("log ratio: ",MH_ratio)
-            prob=min(np.exp(MH_ratio),1)
-            gen=np.random.binomial(1,prob)
-            
-            if gen==1:
-                print("Accepted")
-                for d in index_d:
-                    for j in range(self.N[d]):
-                        self.z[d][j]=1-self.z[d][j]
-                #self.z=z_prop
-                self.Z[index_k]=Z_k_prop
-                self.W[index_k+1]=W_k_prop
-                self.W[0]=W_0_prop
-            #    self.z=z_prop
-                #self.Z=Z_prop
-                #self.W=W_prop
-            #    self.Z[index_k]=Z_k_prop
-            #    self.W[index_k+1]=W_k_prop
-            #print("Wk self after:",self.W[index_k+1])
-            #print("W0 self after:",self.W[0])
-        else:
-            
-            W_s_prop=np.zeros(shape=self.V, dtype=int) # Counter for topic drawn
-            W_0_prop=np.zeros(shape=self.V, dtype=int)
-            # Draw a command topic (from existing topics)
-            list_unique=[np.unique(val) for key,val in self.s.items()] # list of lists of unique command topics in docs
-            index_s=np.random.choice(np.unique([x for l in list_unique for x in l])) # random draw from list of unique command topics accross all docs
-            for d in range(self.D):
-                for j in range(self.N[d]):
-                    if self.s[d][j]==index_s:
-                        #z_prop[d][j]=1-self.z[d][j]
-                        z_prop=1-self.z[d][j]
-                        Wjd=Counter(self.w[d][j][z_prop == 1]) # Update counter for W after label switch proposal
-                        for v in Wjd:
-                            W_s_prop[v]+=Wjd[v]
-                        # Secondary topics
-                        #Wjd = Counter(self.w[d][j][z_prop[d][j] == 0])
-                        Wjd = Counter(self.w[d][j][z_prop == 0])
-                        for v in Wjd:
-                            W_0_prop[v] += Wjd[v]
-            W_0_prop = self.W[0] - W_s_prop + W_0_prop
-            #W_prop[index_s+1]=W_s_prop
-            #Z_prop[index_s]=self.M_star[index_s]-self.Z[index_s] # Update counter for Z
-            Z_s_prop=self.M_star[index_s]-self.Z[index_s] # Update counter for Z        
-            
-            MH_ratio = 0      
-            MH_ratio += logB(self.eta + W_s_prop) + logB(self.eta + W_0_prop) + logB(np.array([self.alpha + Z_s_prop, self.alpha0 + self.M_star[index_s] - Z_s_prop]))
-            MH_ratio -= logB(self.eta + self.W[index_s+1]) + logB(self.eta + self.W[0]) + logB(np.array([self.alpha + self.Z[index_s], self.alpha0 + self.M_star[index_s] - self.Z[index_s]]))
-            #print("log MH ratio: ",MH_ratio)
-            prob=min(np.exp(MH_ratio),1)
-            gen=np.random.binomial(1,prob)
-            if gen==1:
-                #self.z=z_prop
-                #self.Z=Z_prop
-                #self.W=W_prop
-                self.Z[index_s]=Z_s_prop
-                self.W[index_s+1]=W_s_prop
-                self.W[0]=W_0_prop
-                for d in range(self.D):
-                    for j in range(self.N[d]):
-                        if self.s[d][j]==index_s:
-                            self.z[d][j]=1-self.z[d][j]
-                #self.z=z_prop
-                
-                
-
+                        
     ## Initializes chain at given values of t, s and z
     def custom_init(self, t, s=None, z=None):
         if isinstance(t, list) or isinstance(t, np.ndarray):
@@ -751,7 +613,7 @@ class topic_model:
                             self.M_star = np.delete(self.M_star, -1)
                             self.Z = np.delete(self.Z, -1)
         # Check if t changed, and count +1 for the change in counter
-        if np.any(t_old != self.t):
+        if self.count_changes and np.any(t_old != self.t):
             self.change_counter_t += 1
 
     ## Resample session-level topics
@@ -855,11 +717,9 @@ class topic_model:
                         self.M_star = np.delete(self.M_star, -1)
                         self.Z = np.delete(self.Z, -1)
             # Keep counter for changed commands in docs
-            if (s_old!=s_new) and (entry_count < 1):
+            if self.count_changes and (s_old != s_new) and (entry_count < 1):
                 entry_count += 1
-                #print("new s for doc ",d)
-                #self.change_counter_s[d]+=1
-                self.change_counter_s+=1
+                self.change_counter_s += 1
                         
     ## Resample indicator for primary-secondary topic
     def resample_indicators(self, size=1, indices=None):
@@ -885,7 +745,7 @@ class topic_model:
             ## Index for Z
             topicz = np.copy(topic if self.shared_Z else d)
             self.Z[topicz] -= z_old
-            self.W[(topic+1)*z_old,v] -= 1
+            self.W[(topic+1) * z_old,v] -= 1
             # Calculate allocation probabilities
             probs = np.zeros(2)
             if self.phi_gem:
@@ -902,10 +762,9 @@ class topic_model:
             self.Z[topicz] += z_new
             self.W[(topic + 1) * z_new, v] += 1
             # Counter for z changes in docs
-            if (z_old!=z_new) and (entry_count < 1):
-                entry_count+=1
-                #self.change_counter_z[d]+=1
-                self.change_counter_z+=1
+            if self.count_changes and (z_old != z_new) and (entry_count < 1):
+                entry_count += 1
+                self.change_counter_z += 1
 
     ## Split-merge move for session-level topics
     def split_merge_session(self, random_allocation=False):
@@ -1136,9 +995,9 @@ class topic_model:
             accept = (-np.random.exponential(1) < acceptance_ratio)
             # Update if move is accepted
             if accept:
-                # Count +1 for change in values in t due to accept move
-                self.change_counter_t+=1
-                print("accepted move for t")
+                if self.count_changes: 
+                    # Count +1 for change in values in t due to accept move
+                    self.change_counter_t += 1
                 if split:
                     self.t[d_prime] = t_ast
                     self.t[indices[np.array(t_prop) == 0]] = t
@@ -1357,9 +1216,9 @@ class topic_model:
             accept = (-np.random.exponential(1) < acceptance_ratio)
             # Update if move is accepted
             if accept:
-                # Count +1 for change in values in s due to accept move
-                self.change_counter_s+=1
-                print("accepted move for s")
+                if self.count_changes:
+                    # Count +1 for change in values in s due to accept move
+                    self.change_counter_s += 1
                 if split:
                     self.s[d][j] = s
                     self.s[d_prime][j_prime] = s_ast
@@ -1376,9 +1235,6 @@ class topic_model:
                 if self.secondary_topic:
                     self.M_star[s] = M_ast_prop[0]; self.M_star[s_ast] = M_ast_prop[1]
                     self.Z[s] = Z_prop[0]; self.Z[s_ast] = Z_prop[1]
-                # Counter of change for s
-                #for doc in np.append(indices_d,[d,d_prime]):
-                #    self.change_counter_s[doc]+=1
 
     ## MH step for label switching issue with z
     def MH_label_z(self):
@@ -1402,7 +1258,7 @@ class topic_model:
             for v in Wjd:
                 W_k_prop[v] += Wjd[v]       
             for v in Wjd0:
-                W_0_prop[v] += Wjd[v]
+                W_0_prop[v] += Wjd0[v]
             ## Update W_0_prop
             W_0_prop = self.W[0] - W_k_prop + W_0_prop
             Z_k_prop = self.M_star[index_k] - self.Z[index_k] # Update counter for Z     
@@ -1422,7 +1278,7 @@ class topic_model:
             # Draw a command topic (from existing topics)
             list_unique = np.where(self.S.sum(axis=0) > 0)[0] # [np.unique(val) for key,val in self.s.items()] # list of lists of unique command topics in docs
             # index_s = np.random.choice(np.unique([x for l in list_unique for x in l])) # random draw from list of unique command topics accross all docs
-            index_s = np.random.choce(list_unique)
+            index_s = np.random.choice(list_unique)
             for d in range(self.D):
                 for j in range(self.N[d]):
                     if self.s[d][j] == index_s:
@@ -1434,7 +1290,7 @@ class topic_model:
             for v in Wjd:
                 W_k_prop[v] += Wjd[v]
             for v in Wjd0:
-                W_0_prop[v] += Wjd[v]
+                W_0_prop[v] += Wjd0[v]
             ## Proposed values
             W_0_prop = self.W[0] - W_k_prop + W_0_prop
             Z_s_prop = self.M_star[index_s] - self.Z[index_s] # Update counter for Z           
@@ -1453,7 +1309,7 @@ class topic_model:
                             self.z[d][j] = 1 - self.z[d][j]
 
     ## Runs MCMC chain
-    def MCMC(self, iterations, burnin=0, size=1, verbose=True, calculate_ll=False, random_allocation=False, jupy_out=False, 
+    def MCMC(self, iterations, burnin=0, size=1, verbose=True, calculate_ll=False, random_allocation=False, jupy_out=False, count_changes = False,
                 return_t=True, return_s=False, return_z=False, return_change_t=False, return_change_s=False, return_change_z=False, thinning=1):
         # Moves
         moves = ['t']
@@ -1489,18 +1345,22 @@ class topic_model:
                 for j in range(self.N[d]):
                     z_out[d][j] = np.zeros((Q,self.M[d][j]),dtype=int)
         # Return of counters
-        if return_change_t:
+        # Create counters of changes in t,s,z among iterations
+        if not isinstance(count_changes, bool):
+            raise TypeError('fixed_V must be True or False.')
+        self.count_changes = count_changes
+        if self.count_changes:
+            self.change_counter_t = 0
+            if self.command_level_topics:
+                self.change_counter_s = 0
+            if self.secondary_topic:
+                self.change_counter_z = 0
+        if return_change_t and self.count_changes:
             change_t_out = np.zeros(Q,dtype=int)
-        if return_change_s and self.command_level_topics:
+        if return_change_s and self.command_level_topics and self.count_changes:
             change_s_out = np.zeros(Q,dtype=int)
-            #change_s_out={}
-            #for d in range(self.D):
-            #    change_s_out[d] = np.zeros(Q,dtype=int)
-        if return_change_z and self.secondary_topic:
+        if return_change_z and self.secondary_topic and self.count_changes:
             change_z_out = np.zeros(Q,dtype=int)
-            #change_z_out={}
-            #for d in range(self.D):
-            #    change_z_out[d] = np.zeros(Q,dtype=int)
         for it in range(iterations+burnin):
             # Sample move
             move = np.random.choice(moves, p=moves_probs)
@@ -1516,7 +1376,7 @@ class topic_model:
             elif move == 'split_merge_command':
                 self.split_merge_command(random_allocation=random_allocation)
             else:
-                continue ##self.MH_label_z()
+                self.MH_label_z()
             if calculate_ll:
                 ll += [self.marginal_loglikelihood()]
             # Print progression
@@ -1551,21 +1411,15 @@ class topic_model:
                     for d in range(self.D):
                         for j in range(self.N[d]):
                             z_out[d][j][q] = np.copy(self.z[d][j])
-                if return_change_t:
+                if return_change_t and self.count_changes:
                     change_t_out[q] = np.copy(self.change_counter_t)
                     self.change_counter_t = 0 
-                if return_change_s and self.command_level_topics:
+                if return_change_s and self.command_level_topics and self.count_changes:
                     change_s_out[q] = np.copy(self.change_counter_s)
                     self.change_counter_s = 0 
-                    #for d in range(self.D):
-                    #    change_s_out[d][q]=np.copy(self.change_counter_s[d])
-                    #self.change_counter_s = dict.fromkeys(range(self.D),0)
-                if return_change_z and self.secondary_topic:
+                if return_change_z and self.secondary_topic and self.count_changes:
                     change_z_out[q] = np.copy(self.change_counter_z)
                     self.change_counter_z = 0 
-                    #for d in range(self.D):
-                    #    change_z_out[d][q]=np.copy(self.change_counter_z[d])
-                    #self.change_counter_z = dict.fromkeys(range(self.D),0)
         ## Output
         out = {}
         if calculate_ll:
@@ -1576,11 +1430,11 @@ class topic_model:
             out['s'] = s_out
         if return_z and self.secondary_topic:
             out['z'] = z_out
-        if return_change_t:
+        if return_change_t and self.count_changes:
             out['change_t_counter'] = change_t_out
-        if return_change_s and self.command_level_topics:
+        if return_change_s and self.command_level_topics and self.count_changes:
             out['change_s_counter'] = change_s_out
-        if return_change_z and self.secondary_topic:
+        if return_change_z and self.secondary_topic and self.count_changes:
             out['change_z_counter'] = change_z_out
         ## Return output
         return out
