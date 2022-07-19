@@ -1412,7 +1412,6 @@ class topic_model:
             # Accept / reject
             accept = (-np.random.exponential(1) < MH_ratio)
             if accept:
-                print("Accepted")
                 for d in index_d:
                     for j in range(self.N[d]):
                         self.z[d][j] = 1 - self.z[d][j]
