@@ -10,7 +10,7 @@ def normalise(x):
 def simulate_data(D, K=0, fixed_K = True, H=0, fixed_H = True, V=0, fixed_V = True, 
                     N_num=0, fixed_N = False, M_num=0, fixed_M = False, psi_dic=0, fixed_psi = False,
                     secondary_topic = False, shared_Z = False, command_level_topics = False, phi_last=True,
-                    phi_dic=0, fixed_phi=False,
+                    phi_dic=0, fixed_phi=False, fixed_prop=False,
                     distinct_psi= False, distinct_phi= False,
                     gamma=1.0, eta=1.0, alpha=1.0, alpha0=1.0, tau=1.0,
                     csi=1, omega=10, stick_truncation=100, seed=111):
@@ -100,7 +100,10 @@ def simulate_data(D, K=0, fixed_K = True, H=0, fixed_H = True, V=0, fixed_V = Tr
             M[d] = np.random.poisson(lam=omega, size=N[d]) + 1
     # Sample the session-level allocations
     if fixed_K:
-        lam = np.random.dirichlet(alpha=np.ones(K)*gamma)
+        if fixed_prop: 
+            lam = np.ones(K) / K
+        else:
+            lam = np.random.dirichlet(alpha=np.ones(K)*gamma)
     else:
         # Use stick-breaking representation of Dirichlet process
         b = np.random.beta(a=1, b=gamma, size=stick_truncation)

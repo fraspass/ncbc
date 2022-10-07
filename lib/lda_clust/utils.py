@@ -34,3 +34,18 @@ def F1_Z(z_true, z_est):
 	# Crosstab
 	ct = pd.crosstab(np.array(chain_true), np.array(chain_est))
 	return F1(chain_true, chain_est), ct
+
+## Estimate communities using hierarchical clustering on the posterior similarity matrix
+def estimate_t(q,m,K):
+    import numpy as np
+    ## Scaled posterior similarity matrix
+    psm = np.zeros((m.D,m.D))
+    for i in range(q['t'].shape[0]):
+        psm += np.equal.outer(q['t'][i],q['t'][i])
+    ## Posterior similarity matrix (estimate)
+    psm /= q['t'].shape[1]
+    ## Clustering based on posterior similarity matrix (hierarchical clustering)
+    from sklearn.cluster import AgglomerativeClustering
+    cluster_model = AgglomerativeClustering(n_clusters=K, affinity='precomputed', linkage='average') 
+    clust = cluster_model.fit_predict(1-psm)
+    return clust

@@ -11,5 +11,5 @@ from .clean_commands import (
 )
 
 from .utils import (
-	logB, ari_t, ari_s, F1_Z
+	logB, ari_t, ari_s, F1_Z, estimate_t
 )
