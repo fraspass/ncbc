@@ -9,7 +9,7 @@ def normalise(x):
 ## Simulate data from the topic model
 def simulate_data(D, K=0, fixed_K = True, H=0, fixed_H = True, V=0, fixed_V = True, 
                     N_num=0, fixed_N = False, M_num=0, fixed_M = False, psi_dic=0, fixed_psi = False,
-                    secondary_topic = False, shared_Z = False, command_level_topics = False, phi_last=True,
+                    secondary_topic = False, shared_Z = True, command_level_topics = False, phi_last=True,
                     phi_dic=0, fixed_phi=False, fixed_prop=False,
                     distinct_psi= False, distinct_phi= False,
                     gamma=1.0, eta=1.0, alpha=1.0, alpha0=1.0, tau=1.0,

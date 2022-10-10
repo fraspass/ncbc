@@ -23,7 +23,7 @@ class topic_model:
     # Required input: W - dictionary of dictionaries containing the words (as consecutive integers starting at 0)
 
     def __init__(self, W, K, H=0, V=0, fixed_V = True, secondary_topic = True, 
-                    shared_Z = False, command_level_topics = True,
+                    shared_Z = True, command_level_topics = True,
                     gamma=1.0, tau=1.0, eta=1.0, alpha=1.0, alpha0=1.0,
                     lambda_gem=False, psi_gem=False, phi_gem=False):
         
@@ -1203,7 +1203,7 @@ class topic_model:
             acceptance_ratio -= np.sum(loggamma(self.eta + self.W[s_indices + (1 if self.secondary_topic else 0)]))
             acceptance_ratio -= np.sum(loggamma(np.sum(self.eta + W_prop, axis=1)))
             acceptance_ratio += np.sum(loggamma(np.sum(self.eta + self.W[s_indices + (1 if self.secondary_topic else 0)], axis=1)))
-            if self.secondary_topic:
+            if self.secondary_topic and self.shared_Z:
                 acceptance_ratio += np.sum(loggamma(self.alpha + Z_prop)) + np.sum(loggamma(self.alpha0 + M_ast_prop - Z_prop))
                 acceptance_ratio -= np.sum(loggamma(self.alpha + self.alpha0 + M_ast_prop))
                 acceptance_ratio -= np.sum(loggamma(self.alpha + self.Z[s_indices])) + np.sum(loggamma(self.alpha0 + self.M_star[s_indices] - self.Z[s_indices]))
