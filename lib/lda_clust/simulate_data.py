@@ -10,8 +10,8 @@ def normalise(x):
 def simulate_data(D, K=0, fixed_K = True, H=0, fixed_H = True, V=0, fixed_V = True, 
                     N_num=0, fixed_N = False, M_num=0, fixed_M = False, psi_dic=0, fixed_psi = False,
                     secondary_topic = False, shared_Z = True, command_level_topics = False, phi_last=True,
-                    phi_dic=0, fixed_phi=False, fixed_prop=False,
-                    distinct_psi= False, distinct_phi= False,
+                    phi_dic=0, fixed_phi=False, fixed_prop=False, fixed_theta=False, theta=1.0,
+                    distinct_psi=False, distinct_phi= False,
                     gamma=1.0, eta=1.0, alpha=1.0, alpha0=1.0, tau=1.0,
                     csi=1, omega=10, stick_truncation=100, seed=111):
     # Check if the provided value of seed is appropriate
@@ -77,6 +77,11 @@ def simulate_data(D, K=0, fixed_K = True, H=0, fixed_H = True, V=0, fixed_V = Tr
                 raise ValueError('The prior parameters alpha0 must be positive.')
         else:
             raise TypeError('The prior parameter alpha0 must be a float or integer.')
+        if not isinstance(fixed_theta, bool):
+            raise TypeError('fixed_theta must be True or False.')
+        else:
+            if not isinstance(theta, float) or theta > 1 or theta < 0:
+                raise TypeError('theta must be a float between 0 and 1.')
     # Command-level topics
     if not isinstance(command_level_topics, bool):
         raise ValueError('command_level_topics must be True or False.')
@@ -123,10 +128,10 @@ def simulate_data(D, K=0, fixed_K = True, H=0, fixed_H = True, V=0, fixed_V = Tr
     else:
         if distinct_phi: # avoid overlap when not given dictionary as argument
             phi_sample = np.random.dirichlet(alpha=np.ones(V)*eta,size = len(rr)*10) 
-            v_ind=[np.argmax(ii) for ii in phi_sample] # get index for topic h where peak for each sample drawn 
-            uniq_v=np.unique(v_ind) # get unique topic h for which samples peak
-            sample_ind_v=[v_ind.index(ii) for ii in uniq_v[0:len(rr)]]
-            phi=phi_sample[sample_ind_v]
+            v_ind = [np.argmax(ii) for ii in phi_sample] # get index for topic h where peak for each sample drawn 
+            uniq_v = np.unique(v_ind) # get unique topic h for which samples peak
+            sample_ind_v = [v_ind.index(ii) for ii in uniq_v[0:len(rr)]]
+            phi = phi_sample[sample_ind_v]
         else:    # allow randomeness
             phi = {}
             for k in rr:
@@ -144,10 +149,10 @@ def simulate_data(D, K=0, fixed_K = True, H=0, fixed_H = True, V=0, fixed_V = Tr
         else:
             if distinct_psi:
                 psi_sample = np.random.dirichlet(alpha=np.ones(H)*tau,size = K*10)
-                h_ind=[np.argmax(ii) for ii in psi_sample] # get index for topic h where peak for each sample drawn 
-                uniq_h=np.unique(h_ind) # get unique topic h for which samples peak
-                sample_ind_h=[h_ind.index(ii) for ii in uniq_h[0:K]]
-                psi=psi_sample[sample_ind_h]
+                h_ind = [np.argmax(ii) for ii in psi_sample] # get index for topic h where peak for each sample drawn 
+                uniq_h = np.unique(h_ind) # get unique topic h for which samples peak
+                sample_ind_h = [h_ind.index(ii) for ii in uniq_h[0:K]]
+                psi = psi_sample[sample_ind_h]
             else:    
                 psi = {}
                 for k in range(K if fixed_K else stick_truncation):
@@ -166,12 +171,21 @@ def simulate_data(D, K=0, fixed_K = True, H=0, fixed_H = True, V=0, fixed_V = Tr
     # Sample theta for secondary topics
     if secondary_topic:
         if not shared_Z: 
-            theta = np.random.beta(a=alpha, b=alpha0, size=D)        
+            if not fixed_theta:
+                theta = np.random.beta(a=alpha, b=alpha0, size=D)
+            else:
+                theta = theta * np.ones(D)
         else:
             if not command_level_topics:
-                theta = np.random.beta(a=alpha, b=alpha0, size=K if fixed_K else stick_truncation)
+                if not fixed_theta:
+                    theta = np.random.beta(a=alpha, b=alpha0, size=K if fixed_K else stick_truncation)
+                else:
+                    theta = theta * np.ones(K if fixed_K else stick_truncation)
             else:
-                theta = np.random.beta(a=alpha, b=alpha0, size=H if fixed_H else stick_truncation)
+                if not fixed_theta:
+                    theta = np.random.beta(a=alpha, b=alpha0, size=H if fixed_H else stick_truncation)
+                else:
+                    theta = theta * np.ones(H if fixed_H else stick_truncation)
     # Sample the words
     w = {}
     if secondary_topic:

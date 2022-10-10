@@ -1249,11 +1249,11 @@ class topic_model:
             index_d = np.where(self.t == index_k)[0]
             for d in index_d:
                 for j in range(self.N[d]):
-                    z_prop = 1-self.z[d][j]
+                    z_prop = 1 - self.z[d][j]
                     # Primary topics
                     Wjd += Counter(self.w[d][j][z_prop == 1]) # Update counter for W after label switch proposal
                     # Secondary topics
-                    Wjd0 = Counter(self.w[d][j][z_prop == 0])
+                    Wjd0 += Counter(self.w[d][j][z_prop == 0])
             ## Update the proposal vectors
             for v in Wjd:
                 W_k_prop[v] += Wjd[v]       
