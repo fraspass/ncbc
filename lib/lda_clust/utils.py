@@ -43,9 +43,34 @@ def estimate_t(q,m,K):
     for i in range(q['t'].shape[0]):
         psm += np.equal.outer(q['t'][i],q['t'][i])
     ## Posterior similarity matrix (estimate)
-    psm /= q['t'].shape[1]
+    psm /= q['t'].shape[0]
     ## Clustering based on posterior similarity matrix (hierarchical clustering)
     from sklearn.cluster import AgglomerativeClustering
     cluster_model = AgglomerativeClustering(n_clusters=K, affinity='precomputed', linkage='average') 
     clust = cluster_model.fit_predict(1-psm)
     return clust
+
+## Estimate communities using hierarchical clustering on the posterior similarity matrix
+def estimate_s(q,m,K):
+    import numpy as np
+    ## Scaled posterior similarity matrix
+    for i in range(m.D):
+        try:
+            v = np.hstack((v, q['s'][i]))
+        except:
+            v = q['s'][i]
+    psm = np.zeros((v.shape[1], v.shape[1]))
+    for i in range(v.shape[0]):
+        psm += np.equal.outer(v[i], v[i])
+    ## Posterior similarity matrix (estimate)
+    psm /= v.shape[0]
+    ## Clustering based on posterior similarity matrix (hierarchical clustering)
+    from sklearn.cluster import AgglomerativeClustering
+    cluster_model = AgglomerativeClustering(n_clusters=K, affinity='precomputed', linkage='average') 
+    clust = cluster_model.fit_predict(1-psm)
+    nn = 0
+    clust_dict = {}
+    for i in range(m.D):
+        clust_dict[i] = clust[nn:(nn+m.N[i])]
+        nn += m.N[i]
+    return clust_dict
