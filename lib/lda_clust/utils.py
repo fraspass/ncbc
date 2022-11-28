@@ -36,7 +36,7 @@ def F1_Z(z_true, z_est):
 	return F1(chain_true, chain_est), ct
 
 ## Estimate communities using hierarchical clustering on the posterior similarity matrix
-def estimate_t(q,m,K):
+def estimate_t(q,m,K,linkage='average'):
     import numpy as np
     ## Scaled posterior similarity matrix
     psm = np.zeros((m.D,m.D))
@@ -46,12 +46,12 @@ def estimate_t(q,m,K):
     psm /= q['t'].shape[0]
     ## Clustering based on posterior similarity matrix (hierarchical clustering)
     from sklearn.cluster import AgglomerativeClustering
-    cluster_model = AgglomerativeClustering(n_clusters=K, affinity='precomputed', linkage='average') 
+    cluster_model = AgglomerativeClustering(n_clusters=K, affinity='precomputed', linkage=linkage) 
     clust = cluster_model.fit_predict(1-psm)
     return clust
 
 ## Estimate communities using hierarchical clustering on the posterior similarity matrix
-def estimate_s(q,m,K):
+def estimate_s(q,m,K,linkage='average'):
     import numpy as np
     ## Scaled posterior similarity matrix
     for i in range(m.D):
@@ -66,7 +66,7 @@ def estimate_s(q,m,K):
     psm /= v.shape[0]
     ## Clustering based on posterior similarity matrix (hierarchical clustering)
     from sklearn.cluster import AgglomerativeClustering
-    cluster_model = AgglomerativeClustering(n_clusters=K, affinity='precomputed', linkage='average') 
+    cluster_model = AgglomerativeClustering(n_clusters=K, affinity='precomputed', linkage=linkage) 
     clust = cluster_model.fit_predict(1-psm)
     nn = 0
     clust_dict = {}

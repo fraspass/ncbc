@@ -25,10 +25,17 @@ class topic_model:
     def __init__(self, W, K, H=0, V=0, fixed_V = True, secondary_topic = True, 
                     shared_Z = True, command_level_topics = True,
                     gamma=1.0, tau=1.0, eta=1.0, alpha=1.0, alpha0=1.0,
-                    lambda_gem=False, psi_gem=False, phi_gem=False):
+                    lambda_gem=False, psi_gem=False, phi_gem=False, numpyfy=False):
         
         # Documents & sentences (sessions & commands) in python dictionary form
-        self.w = W
+        if not numpyfy:
+            self.w = W
+        else:
+            self.w = {}
+            for d in W:
+                self.w[d] = {}
+                for s in W[d]:
+                    self.w[d][s] = np.array(W[d][s])
         # Number of documents
         self.D = len(W)
         # Length of each document
@@ -252,8 +259,22 @@ class topic_model:
                 raise TypeError('The initial value for z should be a dictionary.')
             else:
                 self.z = z
-        ## Initialise counts
-        self.init_counts()
+        else:
+            # Initialise all z's at random
+            if self.secondary_topic:
+                self.z = {}
+                freqs = Counter()
+                for d in self.w:
+                    freqs += Counter(np.unique(reduce(lambda xs, ys: xs + ys, [list(self.w[d][j]) for j in self.w[d]])))
+                for d in self.w:
+                    self.z[d] = {}
+                    for j in self.w[d]:
+                        self.z[d][j] = np.zeros(self.M[d][j])
+                        for i in range(self.M[d][j]):
+                            f = freqs[self.w[d][j][i]] / self.D
+                            self.z[d][j][i] = int(np.random.choice(2, p=[f, 1-f]))
+        # Initialise counts
+        self.init_counts()     
 
     ## Initializes uniformly at random
     def random_init(self, K_init=None, H_init=None):
@@ -273,11 +294,11 @@ class topic_model:
         self.t = np.random.choice(K_init, size=self.D)
         for d in range(self.D):
             if self.command_level_topics:
-                self.s[d] = np.random.choice(H_init, size=len(self.w[d]))
+                self.s[d] = int(np.random.choice(H_init, size=len(self.w[d])))
             if self.secondary_topic:
                 self.z[d] = {}
                 for j in self.w[d]:
-                    self.z[d][j] = np.random.choice(2, size=self.M[d][j])
+                    self.z[d][j] = int(np.random.choice(2, size=self.M[d][j]))
         ## Initialise counts
         self.init_counts()   
 
@@ -395,7 +416,7 @@ class topic_model:
         self.init_counts()
 
     ## Initializes chain using spectral clustering  
-    def spectral_init(self, K_init=None, H_init=None, random_z=False):
+    def spectral_init(self, K_init=None, H_init=None, random_z=False, random_state=0):
         # Check if the provided value for K is appropriate
         if K_init is not None:
             if not isinstance(K_init, int) or K_init < 1:
@@ -432,7 +453,7 @@ class topic_model:
         cooccurrence_matrix = coo_matrix((vals, (rows, cols)), shape=(self.N_cumsum[-1] if self.command_level_topics else self.D, self.V))
 		## Spectral decomposition of A
         U, S, _ = svds(cooccurrence_matrix.asfptype(), k=H_init if self.command_level_topics else K_init)
-        kmod = KMeans(n_clusters=H_init if self.command_level_topics else K_init, random_state=0).fit(U[:,::-1] * (S[::-1] ** .5))
+        kmod = KMeans(n_clusters=H_init if self.command_level_topics else K_init, random_state=random_state).fit(U[:,::-1] * (S[::-1] ** .5))
         if not self.command_level_topics:
             self.t = kmod.labels_
         else:
@@ -454,10 +475,10 @@ class topic_model:
                 ## Spectral decomposition
                 if K_init < H_init:
                     U, S, _ = svds(cooccurrence_matrix.asfptype(), k=K_init)
-                    kmod = KMeans(n_clusters=K_init, random_state=0).fit(U[:,::-1] * (S[::-1] ** .5))
+                    kmod = KMeans(n_clusters=K_init, random_state=random_state).fit(U[:,::-1] * (S[::-1] ** .5))
                 else:
                     U, S, _ = svd(cooccurrence_matrix.todense(), full_matrices=False)
-                    kmod = KMeans(n_clusters=K_init, random_state=0).fit(np.array(U)[:,::-1] * (S[::-1] ** .5))
+                    kmod = KMeans(n_clusters=K_init, random_state=random_state).fit(np.array(U)[:,::-1] * (S[::-1] ** .5))
                 self.t = kmod.labels_
             else:
                 self.t = np.zeros(self.D, dtype=int)
@@ -1325,7 +1346,7 @@ class topic_model:
                 moves_probs += [2]
         if self.secondary_topic:
             moves += ['z', 'label_switch_z']
-            moves_probs += [5, 1]
+            moves_probs += [5, 1e-20]
         moves_probs /= np.sum(moves_probs)
         ## Marginal posterior
         if calculate_ll:
