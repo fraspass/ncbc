@@ -1346,7 +1346,7 @@ class topic_model:
                 moves_probs += [2]
         if self.secondary_topic:
             moves += ['z', 'label_switch_z']
-            moves_probs += [5, 1e-20]
+            moves_probs += [5, 0.1]
         moves_probs /= np.sum(moves_probs)
         ## Marginal posterior
         if calculate_ll:
