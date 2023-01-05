@@ -1,12 +1,12 @@
-# Clustering command lines using topic modelling
+# Unsupervised attack pattern detection in honeypot data using Bayesian topic modelling
 
-This repository contains a _python_ library supporting the paper _Heard, N.A., Mantziou, A., Thiede, P.R.J. and Sanna Passino, F. "Topic modelling of command lines for attack pattern detection in cyber-security"_ ([preprint](https://arxiv.org)). 
+This repository contains a _python_ library supporting the paper *Sanna Passino, F., Mantziou A., Ghani, D., Thiede, P., Bevington, R. and Heard, N. A. (2023) "Unsupervised attack pattern detection in honeypot data using Bayesian topic modelling"*, available on [arXiv](https://arxiv.org/abs/2102.06527). 
 
-The repository contains two directories:
-* `notebooks` contains Jupyter notebooks with examples on how to use the library and reproduce the results in the paper;
-* `lib` contains the _python_ library.
-
-The _python_ library can be installed in edit mode as follows:
+The library `lda_clust` can be installed in edit mode as follows:
 ```
 pip install -e lib/
+```
+The library can then be imported in any _python_ session:
+```python3
+import lda_clust
 ```
