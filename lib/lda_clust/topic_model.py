@@ -294,11 +294,11 @@ class topic_model:
         self.t = np.random.choice(K_init, size=self.D)
         for d in range(self.D):
             if self.command_level_topics:
-                self.s[d] = int(np.random.choice(H_init, size=len(self.w[d])))
+                self.s[d] = np.random.choice(H_init, size=len(self.w[d])).astype(int)
             if self.secondary_topic:
                 self.z[d] = {}
                 for j in self.w[d]:
-                    self.z[d][j] = int(np.random.choice(2, size=self.M[d][j]))
+                    self.z[d][j] = np.random.choice(2, size=self.M[d][j]).astype(int)
         ## Initialise counts
         self.init_counts()   
 
