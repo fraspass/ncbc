@@ -1,16 +1,16 @@
 from setuptools import setup
 
 setup(
-	name='lda_clust',
+	name='ncbc',
 	version='1.0',
 	packages=[
-		'lda_clust',
+		'ncbc',
 	],
 	install_requires=[
 		'numpy',
 		'scipy',
 		'gensim',
-		'sklearn',
+		'scikit-learn',
 		'nltk',
 	],
 )

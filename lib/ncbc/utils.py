@@ -5,6 +5,7 @@ from itertools import chain
 from sklearn.metrics import adjusted_rand_score as ari
 from sklearn.metrics import f1_score as F1
 import pandas as pd
+from sklearn.cluster import AgglomerativeClustering
 
 ## Computes logarithm of the multivariate beta function
 def logB(vec):
@@ -45,8 +46,7 @@ def estimate_t(q,m,K,linkage='average'):
     ## Posterior similarity matrix (estimate)
     psm /= q['t'].shape[0]
     ## Clustering based on posterior similarity matrix (hierarchical clustering)
-    from sklearn.cluster import AgglomerativeClustering
-    cluster_model = AgglomerativeClustering(n_clusters=K, affinity='precomputed', linkage=linkage) 
+    cluster_model = AgglomerativeClustering(n_clusters=K, metric='precomputed', linkage=linkage) 
     clust = cluster_model.fit_predict(1-psm)
     return clust
 
@@ -65,8 +65,7 @@ def estimate_s(q,m,K,linkage='average'):
     ## Posterior similarity matrix (estimate)
     psm /= v.shape[0]
     ## Clustering based on posterior similarity matrix (hierarchical clustering)
-    from sklearn.cluster import AgglomerativeClustering
-    cluster_model = AgglomerativeClustering(n_clusters=K, affinity='precomputed', linkage=linkage) 
+    cluster_model = AgglomerativeClustering(n_clusters=K, metric='precomputed', linkage=linkage) 
     clust = cluster_model.fit_predict(1-psm)
     nn = 0
     clust_dict = {}
