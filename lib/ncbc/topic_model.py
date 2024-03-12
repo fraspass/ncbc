@@ -18,8 +18,8 @@ logging.basicConfig(filename="debug.log" ,level=logging.DEBUG)
 class topic_model:
     
     # The class can be used to fit one of the topic models discussed in:
-    # Sanna Passino, F., Mantziou, A., Thiede, P., Bevington, R. and Heard, N.A.
-    # "Topic modelling of command lines for attack pattern detection in cyber-security"
+    # Sanna Passino, F., Mantziou, A., Ghani, D., Thiede, P., Bevington, R. and Heard, N.A.
+    # "UNSUPERVISED ATTACK PATTERN DETECTION IN HONEYPOT DATA VIA NESTED CONSTRAINED BAYESIAN CLUSTERING"
     # Required input: W - dictionary of dictionaries containing the words (as consecutive integers starting at 0)
 
     def __init__(self, W, K, H=0, V=0, fixed_V = True, secondary_topic = True, 
@@ -282,14 +282,14 @@ class topic_model:
             if not isinstance(K_init, int) or K_init < 1:
                 raise ValueError('K_init must be an integer value larger or equal to 1.') 
         else:
-            K_init = np.copy(self.K)
+            K_init = int(np.copy(self.K))
         # Check if the provided value for H is appropriate
         if self.command_level_topics:
             if H_init is not None:
                 if not isinstance(H_init, int) or (self.command_level_topics and H_init < 2):
                     raise ValueError('H_init must be an integer value larger or equal to 2 if command-level topics are used.') 
             else:
-                H_init = np.copy(self.H)
+                H_init = int(np.copy(self.H))
         # Random initialisation
         self.t = np.random.choice(K_init, size=self.D)
         for d in range(self.D):
@@ -308,14 +308,14 @@ class topic_model:
             if not isinstance(K_init, int) or K_init < 1:
                 raise ValueError('K_init must be an integer value larger or equal to 1.') 
         else:
-            K_init = np.copy(self.K)
+            K_init = int(np.copy(self.K))
         # Check if the provided value for H is appropriate
         if self.command_level_topics:
             if H_init is not None:
                 if not isinstance(H_init, int) or (self.command_level_topics and H_init < 2):
                     raise ValueError('H_init must be an integer value larger or equal to 2 if command-level topics are used.') 
             else:
-                H_init = np.copy(self.H)
+                H_init = int(np.copy(self.H))
         # Convert words into strings (gensim requirement)
         docs = []
         for d in self.w:
@@ -327,7 +327,7 @@ class topic_model:
                 for v in self.w[d][j]:
                     docs[-1].append(str(v))
         # Create dictionary
-        dictionary = Dictionary(docs); temp = dictionary[0]
+        dictionary = Dictionary(docs) ## ; temp = dictionary[0]
         # Create corpus
         corpus = [dictionary.doc2bow(doc) for doc in docs]
         # Set number of topics
@@ -335,7 +335,10 @@ class topic_model:
         # Model setup
         id2word = dictionary.id2token
         word2id = dictionary.token2id
-        model = LdaModel(corpus = corpus, id2word=id2word, chunksize=chunksize, alpha='auto', eta='auto',
+        if len(id2word) == 0:
+            id2word = dictionary
+            word2id = {v: k for k, v in id2word.items()}
+        model = LdaModel(corpus=corpus, id2word=id2word, chunksize=chunksize, alpha='auto', eta='auto',
                     iterations=iterations, num_topics=num_topics, passes=passes, eval_every=eval_every)
         # Obtain topics from LDA
         topic_allocation = {}
@@ -422,14 +425,14 @@ class topic_model:
             if not isinstance(K_init, int) or K_init < 1:
                 raise ValueError('K_init must be an integer value larger or equal to 1.') 
         else:
-            K_init = np.copy(self.K)
+            K_init = int(np.copy(self.K))
         # Check if the provided value for H is appropriate
         if self.command_level_topics:
             if H_init is not None:
                 if not isinstance(H_init, int) or (self.command_level_topics and H_init < 2):
                     raise ValueError('H_init must be an integer value larger or equal to 2 if command-level topics are used.') 
             else:
-                H_init = np.copy(self.H)
+                H_init = int(np.copy(self.H))
             if K_init > H_init:
                 raise ValueError('K_init must be smaller than H_init for initialising with spectral clustering.')
         # Build co-occurrence matrix
@@ -1034,6 +1037,11 @@ class topic_model:
                     if self.secondary_topic and self.shared_Z:
                         self.M_star[t] = M_ast_prop[0]; self.M_star[t_ast] = M_ast_prop[1]
                         self.Z[t] = Z_prop[0]; self.Z[t_ast] = Z_prop[1]
+        ## Return acceptance status for the move
+        try:
+            return accept
+        except:
+            return None
 
     ## Split-merge move for session-level topics
     def split_merge_command(self, random_allocation=False):
@@ -1256,6 +1264,11 @@ class topic_model:
                 if self.secondary_topic:
                     self.M_star[s] = M_ast_prop[0]; self.M_star[s_ast] = M_ast_prop[1]
                     self.Z[s] = Z_prop[0]; self.Z[s_ast] = Z_prop[1]
+        ## Return acceptance status for the move
+        try:
+            return accept
+        except:
+            return None
 
     ## MH step for label switching issue with z
     def MH_label_z(self):
@@ -1331,7 +1344,7 @@ class topic_model:
 
     ## Runs MCMC chain
     def MCMC(self, iterations, burnin=0, size=1, verbose=True, calculate_ll=False, random_allocation=False, jupy_out=False, count_changes = False,
-                return_t=True, return_s=False, return_z=False, return_change_t=False, return_change_s=False, return_change_z=False, thinning=1):
+            return_t=True, return_s=False, return_z=False, return_change_t=False, return_change_s=False, return_change_z=False, thinning=1, track_moves=False):
         # Moves
         moves = ['t']
         moves_probs = [5]
@@ -1348,6 +1361,9 @@ class topic_model:
             moves += ['z', 'label_switch_z']
             moves_probs += [5, 0.1]
         moves_probs /= np.sum(moves_probs)
+        ## If moves are tracked, define a vector for the set of moves
+        if track_moves:
+            moves_all = []; moves_accept = []
         ## Marginal posterior
         if calculate_ll:
             ll = []
@@ -1393,9 +1409,15 @@ class topic_model:
             elif move == 'z':
                 self.resample_indicators(size=size)
             elif move == 'split_merge_session':
-                self.split_merge_session(random_allocation=random_allocation)
+                a = self.split_merge_session(random_allocation=random_allocation)
+                if track_moves:
+                    moves_all += [move]
+                    moves_accept += [a]
             elif move == 'split_merge_command':
-                self.split_merge_command(random_allocation=random_allocation)
+                a = self.split_merge_command(random_allocation=random_allocation)
+                if track_moves:
+                    moves_all += [move]
+                    moves_accept += [a]
             else:
                 self.MH_label_z()
             if calculate_ll:
@@ -1443,6 +1465,9 @@ class topic_model:
                     self.change_counter_z = 0 
         ## Output
         out = {}
+        if track_moves:
+            out['moves'] = moves
+            out['acceptance_moves'] = moves_accept
         if calculate_ll:
             out['loglik'] = ll
         if return_t:

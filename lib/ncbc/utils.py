@@ -6,6 +6,20 @@ from sklearn.metrics import adjusted_rand_score as ari
 from sklearn.metrics import f1_score as F1
 import pandas as pd
 from sklearn.cluster import AgglomerativeClustering
+from scipy.optimize import linear_sum_assignment
+
+def match_distributions(set1, set2, distance_func):
+    """
+    Match elements from two sets of probability distributions using the Hungarian algorithm.
+    Inputs: set1, set2: Sets of probability distributions; distance_func: Function to compute the distance between two distributions
+    Output: List of tuples where each tuple contains indices of matched elements (from set1 to set2)
+    """
+    # Calculate the cost matrix based on the distance function
+    cost_matrix = np.array([[distance_func(d1, d2) for d2 in set2] for d1 in set1])
+    # Apply the Hungarian algorithm
+    row_ind, col_ind = linear_sum_assignment(cost_matrix)
+    # Return the matching pairs
+    return list(zip(row_ind, col_ind))
 
 ## Computes logarithm of the multivariate beta function
 def logB(vec):
