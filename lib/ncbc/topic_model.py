@@ -1466,7 +1466,7 @@ class topic_model:
         ## Output
         out = {}
         if track_moves:
-            out['moves'] = moves
+            out['moves'] = moves_all
             out['acceptance_moves'] = moves_accept
         if calculate_ll:
             out['loglik'] = ll
