@@ -682,8 +682,8 @@ class topic_model:
                     if self.secondary_topic and self.shared_Z:
                         if self.M_star[s_old] != 0 or self.Z[s_old] != 0:
                             raise ValueError('M_star and Z must be 0.')
-                    self.M_star = np.delete(self.M_star, s_old)
-                    self.Z = np.delete(self.Z, s_old)
+                        self.M_star = np.delete(self.M_star, s_old)
+                        self.Z = np.delete(self.Z, s_old)
                 self.W = np.append(self.W, np.zeros((1,self.V)), axis=0)
                 if self.secondary_topic and self.shared_Z:
                     self.M_star = np.append(self.M_star, 0)
