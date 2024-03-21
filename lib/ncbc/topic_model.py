@@ -637,7 +637,10 @@ class topic_model:
                     probs -= np.sum(np.log(np.add.outer(self.tau + np.sum(self.S, axis=1), np.arange(np.sum(list(Sd.values()))))), axis=1)    
                 else:
                     for h in Sd:
-                        probs += np.sum(np.log(np.add.outer(self.tau + self.S[:,h], np.arange(Sd[h]))), axis=1)
+                        if self.multivariate_hyperparameters:
+                            probs += np.sum(np.log(np.add.outer(self.tau[h] + self.S[:,h], np.arange(Sd[h]))), axis=1)
+                        else:
+                            probs += np.sum(np.log(np.add.outer(self.tau + self.S[:,h], np.arange(Sd[h]))), axis=1)
                     probs -= np.sum(np.log(np.add.outer(np.sum(self.tau + self.S, axis=1), np.arange(np.sum(list(Sd.values()))))), axis=1)               
             else:
                 if self.secondary_topic:
