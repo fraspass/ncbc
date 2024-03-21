@@ -1,15 +1,7 @@
-from .topic_model import (
-	topic_model
-)
+from .topic_model import *
 
-from .simulate_data import (
-	simulate_data
-)
+from .simulate_data import *
 
-from .clean_commands import (
-	clean_commands
-)
+from .clean_commands import *
 
-from .utils import (
-	logB, ari_t, ari_s, F1_Z, estimate_t, estimate_s
-)
+from .utils import *

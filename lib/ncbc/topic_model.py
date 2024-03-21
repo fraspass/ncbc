@@ -144,8 +144,10 @@ class topic_model:
             self.s = {}
         if self.secondary_topic:
             self.z = {}
+        # Multivariate hyperparameters
+        self.multivariate_hyperparameters = False
 
-    ## Calculate marginal posterior up to normalising constants
+    ## Calculate marginal posterior
     def marginal_loglikelihood(self):
         ll = 0
         if self.lambda_gem:
@@ -174,7 +176,7 @@ class topic_model:
         if self.secondary_topic:
             ll += np.sum([logB(np.array([self.alpha + self.Z[k], self.alpha0 + self.M_star[k] - self.Z[k]])) for k in range(self.H if self.command_level_topics else self.K)])
             ll -= (self.H if self.command_level_topics else self.K) * logB(np.array([self.alpha, self.alpha0]))
-        return ll 
+        return ll
 
     ## Initialise counts given initial values of t, s and z
     def init_counts(self):
@@ -236,7 +238,59 @@ class topic_model:
                         Wjd = Counter(self.w[doc][j])
                         for v in Wjd:
                             self.W[td, v] += Wjd[v]
-                        
+
+    ## Initialise from other topic model object
+    def init_from_other(self, other):
+        ## Initialise dictionary from previous model
+        self.V = other.V
+        ## Incorporate information within prior for t
+        if other.T.shape != (self.K,):
+            raise ValueError('The dimension of T in the other model is not compatible with the current model.')
+        else:
+            self.gamma = other.gamma + other.T
+        ## Incorporate information within prior for s
+        if self.command_level_topics:
+            if other.S.shape != (self.K, self.H):
+                raise ValueError('The dimension of S in the other model is not compatible with the current model.')
+            else:
+                self.tau = other.tau + np.sum(other.S, axis=0)
+            ## Incorporate information within prior for w
+            if other.W.shape != (self.H + (1 if self.secondary_topic else 0), self.V):
+                raise ValueError('The dimension of W in the other model is not compatible with the current model.')
+            else:
+                self.eta = other.eta + np.sum(other.W, axis=0)
+            ## Incorporate information within prior for z
+            if self.secondary_topic:
+                if not self.shared_Z:
+                    raise ValueError('The shared_Z parameter must be set to True in the current model for count initialisation via another model.')
+                else:
+                    if other.M_star.shape != (self.H,):
+                        raise ValueError('The dimension of M_star in the other model is not compatible with the current model.')
+                    else:
+                        self.alpha = other.alpha
+                        self.alpha0 = other.alpha0
+                        self.M_star = other.alpha + other.M_star
+                        self.Z = other.alpha0 + other.Z
+        else:
+            if other.W.shape != (self.K + (1 if self.secondary_topic else 0), self.V):
+                raise ValueError('The dimension of W in the other model is not compatible with the current model.')
+            else:
+                self.eta = other.eta + np.sum(other.W, axis=0)
+            ## Incorporate information within prior for z
+            if self.secondary_topic:
+                if not self.shared_Z:
+                    raise ValueError('The shared_Z parameter must be set to True in the current model for count initialisation via another model.')
+                else:
+                    if other.M_star.shape != (self.K,):
+                        raise ValueError('The dimension of M_star in the other model is not compatible with the current model.')
+                    else:
+                        self.alpha = other.alpha
+                        self.alpha0 = other.alpha0
+                        self.M_star = other.alpha + other.M_star
+                        self.Z = other.alpha0 + other.Z
+        ## Multivariate hyperparameters to True
+        self.multivariate_hyperparameters = True
+
     ## Initializes chain at given values of t, s and z
     def custom_init(self, t, s=None, z=None):
         if isinstance(t, list) or isinstance(t, np.ndarray):
@@ -303,7 +357,7 @@ class topic_model:
         self.init_counts()   
 
     ## Initializes chain using gensim   
-    def gensim_init(self, chunksize=2000, passes=100, iterations=1000, eval_every=None, K_init=None, H_init=None):
+    def gensim_init(self, chunksize=2000, passes=100, iterations=1000, eval_every=None, K_init=None, H_init=None, save_topics=False, save_model=False):
         if K_init is not None:
             if not isinstance(K_init, int) or K_init < 1:
                 raise ValueError('K_init must be an integer value larger or equal to 1.') 
@@ -340,6 +394,8 @@ class topic_model:
             word2id = {v: k for k, v in id2word.items()}
         model = LdaModel(corpus=corpus, id2word=id2word, chunksize=chunksize, alpha='auto', eta='auto',
                     iterations=iterations, num_topics=num_topics, passes=passes, eval_every=eval_every)
+        if save_model:
+            self.lda_model = model
         # Obtain topics from LDA
         topic_allocation = {}
         self.t = np.zeros(self.D, dtype=int)
@@ -348,6 +404,8 @@ class topic_model:
         if self.secondary_topic:
             all_counter = Counter()
         topic_term = model.get_topics()
+        if save_topics:
+            self.lda_topics = topic_term
         for d in self.w:
             if not self.command_level_topics:
                 topic_allocation[d] = []
@@ -591,7 +649,10 @@ class topic_model:
                         probs -= np.sum(np.log(np.add.outer(self.eta + np.sum(self.W[1:], axis=1), np.arange(np.sum(list(Wd.values()))))), axis=1)
                     else:
                         for v in Wd:
-                            probs += np.sum(np.log(np.add.outer(self.eta + self.W[1:,v], np.arange(Wd[v]))), axis=1)
+                            if self.multivariate_hyperparameters:
+                                probs += np.sum(np.log(np.add.outer(self.eta[v] + self.W[1:,v], np.arange(Wd[v]))), axis=1)
+                            else:
+                                probs += np.sum(np.log(np.add.outer(self.eta + self.W[1:,v], np.arange(Wd[v]))), axis=1)
                         probs -= np.sum(np.log(np.add.outer(np.sum(self.eta + self.W[1:], axis=1), np.arange(np.sum(list(Wd.values()))))), axis=1)
                     if self.shared_Z:
                         ## z | t components
@@ -606,7 +667,10 @@ class topic_model:
                         probs -= np.sum(np.log(np.add.outer(self.eta + np.sum(self.W, axis=1), np.arange(np.sum(list(Wd.values()))))), axis=1)                        
                     else:
                         for v in Wd:
-                            probs += np.sum(np.log(np.add.outer(self.eta + self.W[:,v], np.arange(Wd[v]))), axis=1)
+                            if self.multivariate_hyperparameters:
+                                probs += np.sum(np.log(np.add.outer(self.eta[v] + self.W[:,v], np.arange(Wd[v]))), axis=1)
+                            else:
+                                probs += np.sum(np.log(np.add.outer(self.eta + self.W[:,v], np.arange(Wd[v]))), axis=1)
                         probs -= np.sum(np.log(np.add.outer(np.sum(self.eta + self.W, axis=1), np.arange(np.sum(list(Wd.values()))))), axis=1)
             # Transform the probabilities
             probs = np.exp(probs - logsumexp(probs))
@@ -717,7 +781,10 @@ class topic_model:
                     probs -= np.sum(np.log(np.add.outer(self.eta + np.sum(self.W, axis=1), np.arange(np.sum(list(Wd.values()))))), axis=1) 
                 else:   
                     for v in Wd:
-                        probs += np.sum(np.log(np.add.outer(self.eta + self.W[:,v], np.arange(Wd[v]))), axis=1)
+                        if self.multivariate_hyperparameters:
+                            probs += np.sum(np.log(np.add.outer(self.eta[v] + self.W[:,v], np.arange(Wd[v]))), axis=1)
+                        else:
+                            probs += np.sum(np.log(np.add.outer(self.eta + self.W[:,v], np.arange(Wd[v]))), axis=1)
                     probs -= np.sum(np.log(np.add.outer(np.sum(self.eta + self.W, axis=1), np.arange(np.sum(list(Wd.values()))))), axis=1)
             # Transform the probabilities
             probs = np.exp(probs - logsumexp(probs))
@@ -776,8 +843,12 @@ class topic_model:
                 probs[1] = np.log(self.alpha + self.Z[topicz]) + np.log(self.eta if self.W[topic+1,v] == 0 else self.W[topic+1,v]) - np.log(np.sum(self.eta + self.W[topic+1]))
                 probs[0] = np.log(self.alpha0 + self.M_star[topicz] - 1 - self.Z[topicz]) + np.log(self.eta if self.W[0,v] == 0 else self.W[0,v]) - np.log(np.sum(self.eta + self.W[0]))
             else:
-                probs[1] = np.log(self.alpha + self.Z[topicz]) + np.log(self.eta + self.W[topic+1,v]) - np.log(np.sum(self.eta + self.W[topic+1]))
-                probs[0] = np.log(self.alpha0 + self.M_star[topicz] - 1 - self.Z[topicz]) + np.log(self.eta + self.W[0,v]) - np.log(np.sum(self.eta + self.W[0]))
+                if self.multivariate_hyperparameters:
+                    probs[1] = np.log(self.alpha + self.Z[topicz]) + np.log(self.eta[v] + self.W[topic+1,v]) - np.log(np.sum(self.eta + self.W[topic+1]))
+                    probs[0] = np.log(self.alpha0 + self.M_star[topicz] - 1 - self.Z[topicz]) + np.log(self.eta[v] + self.W[0,v]) - np.log(np.sum(self.eta + self.W[0]))
+                else:
+                    probs[1] = np.log(self.alpha + self.Z[topicz]) + np.log(self.eta + self.W[topic+1,v]) - np.log(np.sum(self.eta + self.W[topic+1]))
+                    probs[0] = np.log(self.alpha0 + self.M_star[topicz] - 1 - self.Z[topicz]) + np.log(self.eta + self.W[0,v]) - np.log(np.sum(self.eta + self.W[0]))
             probs = np.exp(probs - logsumexp(probs))
             # Resample z
             z_new = np.random.choice(range(2), p=probs)
@@ -1348,13 +1419,13 @@ class topic_model:
         # Moves
         moves = ['t']
         moves_probs = [5]
-        if not self.lambda_gem and not self.phi_gem:
+        if not self.lambda_gem and not self.phi_gem and not self.multivariate_hyperparameters:
             moves += ['split_merge_session']
             moves_probs += [1]
         if self.command_level_topics:
             moves += ['s']
             moves_probs += [5]
-            if not self.psi_gem and not self.phi_gem: 
+            if not self.psi_gem and not self.phi_gem and not self.multivariate_hyperparameters: 
                 moves += ['split_merge_command']
                 moves_probs += [2]
         if self.secondary_topic:
@@ -1482,5 +1553,142 @@ class topic_model:
             out['change_s_counter'] = change_s_out
         if return_change_z and self.secondary_topic and self.count_changes:
             out['change_z_counter'] = change_z_out
+        ## Return output
+        return out
+    
+    ## Resample lambda distribution from posterior Dirichlet conditional on the counts T
+    def resample_lambda(self):
+        self.lam = np.random.dirichlet(self.gamma + self.T)
+    
+    ## Resample phi distribution from posterior Dirichlet conditional on the counts W
+    def resample_phi(self):
+        self.phi = {}
+        for k in range(self.K if self.command_level_topics else self.H):
+            self.phi[k] = np.random.dirichlet(self.eta + self.W[k])
+    
+    ## Resample psi distribution from posterior Dirichlet conditional on the counts S
+    def resample_psi(self):
+        self.psi = {}
+        for h in range(self.H):
+            self.psi[h] = np.random.dirichlet(self.tau + self.S[h])
+
+    ## Resample session topics simply from a categorical distribution with probabilities based on lambda and phi
+    def resample_session_topics_uncollapsed(self, size=0):
+        ## If size is not a positive integer, return error
+        if size < 0 or not isinstance(size, int):
+            raise ValueError('Size must be a positive integer.')
+        ## If size is not zero, sample session indices
+        if size != 0:
+            ## Random sample of indices from the list of documents
+            indices = np.random.choice(self.D if self.command_level_topics else self.H, size=size, replace=False)
+        ## Resample session topics
+        for d in indices if size != 0 else range(self.D if self.command_level_topics else self.H):
+            log_p = np.log(self.lam)
+            for k in range(self.K):
+                for j in self.W[d]:
+                    if self.command_level_topics:
+                        log_p[k] += np.log(self.psi[k][self.s[d][j]])
+                    else:
+                        log_p[k] += np.sum([np.log(self.phi[k][w]) for w in self.W[d][j]])
+            self.t[d] = np.random.multinomial(1, np.exp(log_p - logsumexp(log_p)))
+
+    ## Resample command topics simply from a categorical distribution with probabilities based on psi and phi
+    def resample_command_topics_uncollapsed(self, size=0):
+        ## If size is not a positive integer, return error
+        if size < 0 or not isinstance(size, int):
+            raise ValueError('Size must be a positive integer.')
+        ## If size is not zero, sample session indices
+        if size != 0:
+            indices = np.random.choice(self.D, size=size, replace=False)
+        for d in indices if size != 0 else range(self.D):
+            for j in range(self.N[d]):
+                log_p = np.log(self.psi[self.s[d][j]])
+                for h in range(self.H):
+                    log_p[h] += np.sum([np.log(self.phi[h][w]) for w in self.W[d][j]])
+                self.s[d][j] = np.random.multinomial(1, np.exp(log_p - logsumexp(log_p)))
+
+    ## Runs uncollapsed MCMC chain
+    def uncollapsed_MCMC(self, iterations, burnin=0, size=1, verbose=True, calculate_ll=False, jupy_out=False,
+            return_t=True, return_s=False, thinning=1):
+        # Moves
+        moves = ['t','lambda','phi']
+        moves_probs = [1]
+        if self.command_level_topics:
+            moves += ['s','psi']
+            moves_probs += [1]
+        if self.secondary_topic:
+            raise ValueError('Secondary topics are not supported in the uncollapsed MCMC.')
+        moves_probs /= np.sum(moves_probs)
+        ## Marginal posterior
+        if calculate_ll:
+            ll = []
+        ## Return output
+        Q = int(iterations // thinning)
+        if return_t:
+            t_out = np.zeros((Q,self.D),dtype=int)
+        if return_s and self.command_level_topics:
+            s_out = {}
+            for d in range(self.D):
+                s_out[d] = np.zeros((Q,self.N[d]),dtype=int)
+        ## Start by resampling lambda, phi, psi and theta based on current counts, using conjugacy
+        self.resample_lambda()
+        self.resample_phi()
+        if self.command_level_topics:
+            self.resample_psi()
+        if self.secondary_topic:
+            self.resample_theta()
+        ## Iterate over the MCMC chain
+        for it in range(iterations+burnin):
+            # Sample move
+            move = np.random.choice(moves, p=moves_probs)
+            # Do move
+            if move == 't':
+                self.resample_session_topics_uncollapsed()
+            elif move == 's':
+                self.resample_command_topics_uncollapsed()
+            elif move == 'lambda':
+                self.resample_lambda()
+            elif move == 'phi':
+                self.resample_phi()
+            elif move == 'psi':
+                self.resample_psi()
+            if calculate_ll:
+                ll += [self.marginal_loglikelihood()]
+            # Print progression
+            if verbose:
+                if it < burnin:
+                    if jupy_out:
+                        clear_output(wait=True)
+                        display('Burnin: ' + str(it+1) + ' / ' + str(burnin)) 
+                    else:
+                        print('\rBurnin: ', str(it+1), ' / ', str(burnin), sep='', end=' ', flush=True)
+                elif it == burnin and burnin > 0:
+                    if jupy_out:
+                        clear_output(wait=True)
+                        display('Progression: ' + str(it-burnin+1) + ' / ' + str(iterations)) 
+                    else:
+                        print('\nProgression: ', str(it-burnin+1), ' / ', str(iterations), sep='', end=' ', flush=True)
+                else:
+                    if jupy_out:
+                        clear_output(wait=True)
+                        display('Progression: ' + str(it-burnin+1) + ' / ' + str(iterations))         
+                    else:
+                        print('\rProgression: ', str(it-burnin+1), ' / ', str(iterations), sep='', end=' ', flush=True)
+            ## Store output
+            if it >= burnin and (it - burnin) % thinning == 0:
+                q = (it - burnin) // thinning
+                if return_t:
+                    t_out[q] = np.copy(self.t)
+                if return_s and self.command_level_topics:
+                    for d in range(self.D):
+                        s_out[d][q] = np.copy(self.s[d])
+        ## Output
+        out = {}
+        if calculate_ll:
+            out['loglik'] = ll
+        if return_t:
+            out['t'] = t_out
+        if return_s and self.command_level_topics:
+            out['s'] = s_out
         ## Return output
         return out

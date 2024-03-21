@@ -8,6 +8,7 @@ import pandas as pd
 from sklearn.cluster import AgglomerativeClustering
 from scipy.optimize import linear_sum_assignment
 
+## Match distributions using the Hungarian algorithm
 def match_distributions(set1, set2, distance_func):
     """
     Match elements from two sets of probability distributions using the Hungarian algorithm.
@@ -19,7 +20,71 @@ def match_distributions(set1, set2, distance_func):
     # Apply the Hungarian algorithm
     row_ind, col_ind = linear_sum_assignment(cost_matrix)
     # Return the matching pairs
-    return list(zip(row_ind, col_ind))
+    return list(zip(row_ind, col_ind)), cost_matrix
+
+## Computes the Kullback-Leibler divergence between two probability distributions
+def kl_divergence(p, q):
+    """
+    Compute the Kullback-Leibler divergence between two probability distributions.
+    Inputs: p, q: Probability distributions
+    Output: Kullback-Leibler divergence
+    """
+    return np.sum(p * np.log(p / q))
+
+## Computes the Jensen-Shannon divergence between two probability distributions
+def js_divergence(p, q):
+    """
+    Compute the Jensen-Shannon divergence between two probability distributions.
+    Inputs: p, q: Probability distributions
+    Output: Jensen-Shannon divergence
+    """
+    m = 0.5 * (p + q)
+    return 0.5 * kl_divergence(p, m) + 0.5 * kl_divergence(q, m)
+
+## Computes the Hellinger distance between two probability distributions
+def hellinger_distance(p, q):
+    """
+    Compute the Hellinger distance between two probability distributions.
+    Inputs: p, q: Probability distributions
+    Output: Hellinger distance
+    """
+    return np.sqrt(0.5 * np.sum((np.sqrt(p) - np.sqrt(q))**2))
+
+## Computes the Bhattacharyya distance between two probability distributions
+def bhattacharyya_distance(p, q):
+    """
+    Compute the Bhattacharyya distance between two probability distributions.
+    Inputs: p, q: Probability distributions
+    Output: Bhattacharyya distance
+    """
+    return -np.log(np.sum(np.sqrt(p * q)))
+
+## Computes the total variation distance between two probability distributions
+def total_variation_distance(p, q):
+    """
+    Compute the total variation distance between two probability distributions.
+    Inputs: p, q: Probability distributions
+    Output: Total variation distance
+    """
+    return 0.5 * np.sum(np.abs(p - q))
+
+## Normalise a matrix by row or column
+def normalise_matrix(matrix, axis=0):
+    """
+    Normalise a matrix by row or column.
+    Inputs: matrix: Input matrix; axis: Axis along which to normalise the matrix (0 for column, 1 for row)
+    Output: Normalised matrix
+    """
+    return matrix / np.sum(matrix, axis=axis, keepdims=True)
+
+## Calculate the entropy of a probability distribution
+def entropy(prob_dist):
+    """
+    Calculate the entropy of a probability distribution.
+    Input: prob_dist: Probability distribution
+    Output: Entropy
+    """
+    return -np.sum(prob_dist * np.log(prob_dist))
 
 ## Computes logarithm of the multivariate beta function
 def logB(vec):
