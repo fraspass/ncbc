@@ -41,6 +41,28 @@ def js_divergence(p, q):
     m = 0.5 * (p + q)
     return 0.5 * kl_divergence(p, m) + 0.5 * kl_divergence(q, m)
 
+## Obtain permutation matrix from matching pairs of indices
+def get_permutation_matrix(matching_pairs, n):
+    """
+    Obtain a permutation matrix from matching pairs of indices.
+    Inputs: matching_pairs: List of tuples where each tuple contains indices of matched elements; n: Number of elements
+    Output: Permutation matrix
+    """
+    perm_matrix = np.zeros((n, n))
+    for pair in matching_pairs:
+        perm_matrix[pair[0], pair[1]] = 1
+    return perm_matrix
+
+## Computers the Jensen-Shannon distance between multiple probability distributions
+def js_divergence_multiple(prob_dists):
+    """
+    Compute the Jensen-Shannon distance between multiple probability distributions.
+    Input: prob_dists: List of probability distributions
+    Output: Jensen-Shannon distance
+    """
+    m = np.mean(prob_dists, axis=0)
+    return np.sqrt(0.5 * np.sum([kl_divergence(p, m) for p in prob_dists]))
+
 ## Computes the Hellinger distance between two probability distributions
 def hellinger_distance(p, q):
     """
@@ -85,6 +107,29 @@ def entropy(prob_dist):
     Output: Entropy
     """
     return -np.sum(prob_dist * np.log(prob_dist))
+
+## Obtain permutation matrix from matching pairs of indices
+def get_permutation_matrix(matching_pairs, n):
+    """
+    Obtain a permutation matrix from matching pairs of indices.
+    Inputs: matching_pairs: List of tuples where each tuple contains indices of matched elements; n: Number of elements
+    Output: Permutation matrix
+    """
+    perm_matrix = np.zeros((n, n))
+    for pair in matching_pairs:
+        perm_matrix[pair[0], pair[1]] = 1
+    return perm_matrix
+
+## Computes the Jaccard similarity between two lists
+def jaccard(list1, list2):
+    intersection = len(list(set(list1).intersection(list2)))
+    union = (len(list1) + len(list2)) - intersection
+    return float(intersection) / union
+
+## Computes the Sorensen similarity between two lists
+def sorensen(list1, list2):
+    intersection = len(list(set(list1).intersection(list2)))
+    return float(2 * intersection) / (len(list(set(list1))) + len(list(set(list2))))
 
 ## Computes logarithm of the multivariate beta function
 def logB(vec):

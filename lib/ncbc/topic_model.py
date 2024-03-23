@@ -389,6 +389,8 @@ class topic_model:
         # Model setup
         id2word = dictionary.id2token
         word2id = dictionary.token2id
+        if save_model:
+            self.lda_dictionary = dictionary
         if len(id2word) == 0:
             id2word = dictionary
             word2id = {v: k for k, v in id2word.items()}
