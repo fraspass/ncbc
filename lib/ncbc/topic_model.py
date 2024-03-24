@@ -12,9 +12,6 @@ from .utils import logB
 from IPython.display import display, clear_output
 from functools import reduce
 
-import logging
-logging.basicConfig(filename="debug.log" ,level=logging.DEBUG)
-
 class topic_model:
     
     # The class can be used to fit one of the topic models discussed in:
