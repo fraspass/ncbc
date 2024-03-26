@@ -16,7 +16,7 @@ class topic_model:
     
     # The class can be used to fit one of the topic models discussed in:
     # Sanna Passino, F., Mantziou, A., Ghani, D., Thiede, P., Bevington, R. and Heard, N.A.
-    # "UNSUPERVISED ATTACK PATTERN DETECTION IN HONEYPOT DATA VIA NESTED CONSTRAINED BAYESIAN CLUSTERING"
+    # "NESTED DIRICHLET MODELS FOR UNSUPERVISED ATTACK PATTERN DETECTION IN HONEYPOT DATA"
     # Required input: W - dictionary of dictionaries containing the words (as consecutive integers starting at 0)
 
     def __init__(self, W, K, H=0, V=0, fixed_V = True, secondary_topic = True, 

@@ -12,7 +12,7 @@ class anchor_model:
     
     # The class can be used to fit the Anchored Nested Bayesian Clustering Model discussed in:
     # Sanna Passino, F., Mantziou, A., Ghani, D., Thiede, P., Bevington, R. and Heard, N.A.
-    # "UNSUPERVISED ATTACK PATTERN DETECTION IN HONEYPOT DATA VIA NESTED CONSTRAINED BAYESIAN CLUSTERING"
+    # "NESTED DIRICHLET MODELS FOR UNSUPERVISED ATTACK PATTERN DETECTION IN HONEYPOT DATA"
     # Required input: W_a - dictionary of dictionaries containing the anchor words (as consecutive integers starting at 0)
     #                 W_c - dictionary of dictionaries containing the chain words (as consecutive integers starting at 0)
     def __init__(self, W_a, W_c, K, H, V=0, gamma=1.0, chi=1.0, tau=1.0, eta=1.0, numpyfy=False):
