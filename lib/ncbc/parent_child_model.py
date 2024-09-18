@@ -8,13 +8,13 @@ from sklearn.cluster import KMeans
 from .utils import logB
 from IPython.display import display, clear_output
 
-class anchor_model:
+class parent_child_model:
     
     # The class can be used to fit the Anchored Nested Bayesian Clustering Model discussed in:
     # Sanna Passino, F., Mantziou, A., Ghani, D., Thiede, P., Bevington, R. and Heard, N.A.
     # "NESTED DIRICHLET MODELS FOR UNSUPERVISED ATTACK PATTERN DETECTION IN HONEYPOT DATA"
-    # Required input: W_a - dictionary of dictionaries containing the anchor words (as consecutive integers starting at 0)
-    #                 W_c - dictionary of dictionaries containing the chain words (as consecutive integers starting at 0)
+    # Required input: W_a - dictionary of dictionaries containing the parent words (as consecutive integers starting at 0)
+    #                 W_c - dictionary of dictionaries containing the child words (as consecutive integers starting at 0)
     def __init__(self, W_a, W_c, K, H, V=0, gamma=1.0, chi=1.0, tau=1.0, eta=1.0, numpyfy=False):
         # Documents & sentences (sessions & commands) in python dictionary form
         self.w_a = W_a
@@ -40,7 +40,7 @@ class anchor_model:
             self.N = np.copy(N_a)
             self.N_cumsum = np.cumsum(self.N)
             self.N_cumsum0 = np.append(0,self.N_cumsum)
-        # Calculate the number of chain words for each document
+        # Calculate the number of child words for each document
         self.M = {}
         for d in self.w_c:
             self.M[d] = [len(self.w_c[d][command]) for command in self.w_c[d]]
@@ -121,10 +121,10 @@ class anchor_model:
         for doc in self.w_a:
             td = self.t[doc]
             for j in range(self.N[doc]):
-                anchor = self.w_a[doc][j]
-                self.W_a[td, anchor] += 1
+                parent = self.w_a[doc][j]
+                self.W_a[td, parent] += 1
                 for w in self.w_c[doc][j]:
-                    self.W_c[self.u[anchor], w] += 1
+                    self.W_c[self.u[parent], w] += 1
 
     ## Initialise from other topic model object
     def init_from_other(self, other):
@@ -198,7 +198,7 @@ class anchor_model:
                 raise ValueError('H_init must be an integer value larger or equal to 1.') 
         else:
             H_init = int(np.copy(self.H))
-        # Build co-occurrence matrix for anchor words
+        # Build co-occurrence matrix for parent words
         cooccurrence_matrix = {}
         for d in self.w_a:
             cooccurrence_matrix[d] = Counter(self.w_a[d])
@@ -214,7 +214,7 @@ class anchor_model:
         U, S, _ = svds(cooccurrence_matrix.asfptype(), k=K_init)
         kmod = KMeans(n_clusters=K_init, random_state=random_state).fit(U[:,::-1] * (S[::-1] ** .5))
         self.t = kmod.labels_
-        # Build co-occurrence matrix for chain words
+        # Build co-occurrence matrix for child words
         cooccurrence_matrix = {}
         for v in range(self.V):
             cooccurrence_matrix[v] = Counter()
@@ -236,8 +236,8 @@ class anchor_model:
         # Initialise counts
         self.init_counts()     
 
-   ## Resample anchor-level topics
-    def resample_anchor_topics(self, size=1, indices=None):
+   ## Resample parent-level topics
+    def resample_parent_topics(self, size=1, indices=None):
         # Optional input: subset - list of integers in {0,1,...,D-1}
         if indices is None:
             indices = np.random.choice(self.D, size=size)
@@ -264,8 +264,8 @@ class anchor_model:
             for v in Wd:
                 self.W_a[td_new,v] += Wd[v]
 
-    ## Resample chain-level topics
-    def resample_chain_topics(self, size=1, indices=None):
+    ## Resample child-level topics
+    def resample_child_topics(self, size=1, indices=None):
         if indices is None:
             indices = np.random.choice(self.V, size=size)
         for v in indices:
@@ -315,9 +315,9 @@ class anchor_model:
             move = np.random.choice(moves, p=moves_probs)
             # Do move
             if move == 't':
-                self.resample_anchor_topics(size=size)
+                self.resample_parent_topics(size=size)
             else:
-                self.resample_chain_topics(size=size)
+                self.resample_child_topics(size=size)
             if calculate_ll:
                 ll += [self.marginal_loglikelihood()]
             # Print progression

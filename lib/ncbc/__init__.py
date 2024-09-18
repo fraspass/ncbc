@@ -6,4 +6,4 @@ from .clean_commands import *
 
 from .utils import *
 
-from .anchor_model import *
+from .parent_child_model import *
