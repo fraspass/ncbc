@@ -53,7 +53,7 @@ Next, the MCMC procedure could be run on an initialised `topic_model` object via
 * `resample_indicators`, used to resample secondary topic indicators;
 * `split_merge_session`, used to propose a split-merge move for session-level topics;
 * `split_merge_command`, used to propose a split-merge move for command-level topics.
-The instance `MCMC` has a number of parameters which can be used to control, for example, the number of samples (`iterations`), the burn-in period (`burnin`) and the thinning (`thinning`).
+The instance `MCMC` has a number of parameters which can be used to control, for example, the number of samples (`iterations`), the burn-in period (`burnin`) and the thinning (`thinning`). A similar instance is available for an uncollapsed version of the Gibbs sampler, called `uncollapsed_MCMC`. 
 
 Note that the PCNBC model can be fitted only via a different class, called `parent_child_model`, available in the file `lib/ncbc/parent_child_model.py`. 
 
