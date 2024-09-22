@@ -10,7 +10,7 @@ from IPython.display import display, clear_output
 
 class parent_child_model:
     
-    # The class can be used to fit the Anchored Nested Bayesian Clustering Model discussed in:
+    # The class can be used to fit the Parent-Child Nested Bayesian Clustering Model discussed in:
     # Sanna Passino, F., Mantziou, A., Ghani, D., Thiede, P., Bevington, R. and Heard, N.A.
     # "NESTED DIRICHLET MODELS FOR UNSUPERVISED ATTACK PATTERN DETECTION IN HONEYPOT DATA"
     # Required input: W_a - dictionary of dictionaries containing the parent words (as consecutive integers starting at 0)
