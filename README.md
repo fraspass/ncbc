@@ -33,6 +33,13 @@ The core of the library is the class `topic_model` contained in the *Python* scr
 * `psi_gem`: a Boolean variable (default: `psi_gem=False`), indicating if GEM prior is used for command-level topics;
 * `phi_gem`: a Boolean variable (default: `phi_gem=False`), indicating if GEM prior is used for word distributions.
 
+For example, the code below gives a NCBC model with a GEM prior on the distributions associated with the session-level and command-level topics (both initialised at `K=30` and `H=30`), a fixed vocabulary `V` with cardinality learned from the training data `x`, and no secondary topics: 
+
+```
+m = ncbc.topic_model(W=x, K=30, H=30, fixed_V=True, secondary_topic=False, command_level_topics=True, 
+                lambda_gem=True, psi_gem=True, gamma=0.01, tau=0.01, eta=1.0)
+```
+
 After the model is defined via the parameters above, it is possible to run initialisation procedures for the Markov Chain Monte Carlo sampler used for Bayesian inference. The possible options for initialisation are: 
 * `init_from_other`: initialise the model from the state of another `topic_model` object;
 * `custom_init`: initialise the chain at given values of `t`, `s` and `z`, representing the session-level topics, command-level topics, and secondary topic indicators;
