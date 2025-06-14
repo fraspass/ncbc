@@ -1,6 +1,6 @@
 # Nested Dirichlet models for unsupervised attack pattern detection in honeypot data
 
-This repository contains a _Python_ library supporting the paper *Sanna Passino, F., Mantziou A., Ghani, D., Thiede, P., Bevington, R. and Heard, N. A. (2025) ["Nested Dirichlet models for unsupervised attack pattern detection in honeypot data"*](https://doi.org/10.1214/24-AOAS1974), Annals of Applied Statistics 19(1), 586-613, available as a preprint on [arXiv](https://arxiv.org/abs/2301.02505). 
+This repository contains a _Python_ library supporting the paper *Sanna Passino, F., Mantziou A., Ghani, D., Thiede, P., Bevington, R. and Heard, N. A. (2025) ["Nested Dirichlet models for unsupervised attack pattern detection in honeypot data"](https://doi.org/10.1214/24-AOAS1974), Annals of Applied Statistics 19(1), 586-613, available as a preprint on [arXiv](https://arxiv.org/abs/2301.02505). 
 
 The library `ncbc` can be installed in edit mode as follows:
 ```
